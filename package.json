@@ -1,0 +1,32 @@
+{
+  "name": "gerenciador-processos-backend",
+  "autor": "João Pedro Souza Moura Brum",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "npm run dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/joaobrum108/gerenciador-processos-backend.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/joaobrum108/gerenciador-processos-backend/issues"
+  },
+  "homepage": "https://github.com/joaobrum108/gerenciador-processos-backend#readme",
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "axios": "^1.20.0",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1"
+  }
+}
