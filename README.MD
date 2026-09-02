@@ -31,6 +31,13 @@ cp .env.example .env
 | `JWT_EXPIRACAO` | `15m` | validade do access token |
 | `REFRESH_EXPIRACAO_DIAS` | `7` | validade do refresh token |
 | `BCRYPT_ROUNDS` | `10` | custo do hash de senha |
+| `SMTP_HOST` | `smtp.empresa.com` | servidor SMTP para e-mails de acesso |
+| `SMTP_PORT` | `587` | porta SMTP |
+| `SMTP_SECURE` | `false` | `true` para TLS direto, normalmente na porta 465 |
+| `SMTP_USER` | e-mail/usuário SMTP | autenticação SMTP |
+| `SMTP_PASS` | segredo SMTP | autenticação SMTP |
+| `SMTP_FROM` | `Gerenciador <nao-responda@empresa.com>` | remetente dos e-mails |
+| `FRONTEND_LOGIN_URL` | URL da tela de login | link opcional incluído no e-mail |
 
 ## Rodando
 

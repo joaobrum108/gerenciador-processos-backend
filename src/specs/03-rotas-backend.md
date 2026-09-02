@@ -1,4 +1,6 @@
-# Rotas do backend por módulo e tela
+# Rotas planejadas do backend por módulo e tela
+
+> Este documento é o planejamento do contrato completo e não representa, sozinho, o que já está disponível. Para integração atual, comece em [`00-LEIA-ME-FRONTEND.md`](./00-LEIA-ME-FRONTEND.md) e consulte [`02-api-implementada.md`](./02-api-implementada.md).
 
 ## Objetivo
 

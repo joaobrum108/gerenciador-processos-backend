@@ -47,6 +47,7 @@ function montarService(opcoes: {
     gruposSalvos: [] as string[][],
     senhasDefinidas: [] as any[],
     ativoAlterado: [] as boolean[],
+    emailsEnviados: [] as any[],
   };
 
   const service = criarUsuariosService({
@@ -91,6 +92,11 @@ function montarService(opcoes: {
         registros.auditorias.push(registro);
       },
     } as any,
+    emailService: {
+      enviarCredenciaisNovoUsuario: async (credenciais: any) => {
+        registros.emailsEnviados.push(credenciais);
+      },
+    },
   });
 
   return { service, registros };
@@ -113,7 +119,6 @@ describe("usuarios.service criar", () => {
       {
         nomeExibicao: "Joao",
         emailLogin: "  JOAO@RedFox.COM  ",
-        senha: "senha-forte-123",
         provedorAuth: "LOCAL",
         grupoIds: [],
       },
@@ -131,7 +136,6 @@ describe("usuarios.service criar", () => {
         {
           nomeExibicao: "Joao",
           emailLogin: "joao@redfox.com",
-          senha: "senha-forte-123",
           provedorAuth: "LOCAL",
           grupoIds: [],
         },
@@ -143,23 +147,22 @@ describe("usuarios.service criar", () => {
     assert.equal(erro.codigo, "EMAIL_EM_USO");
   });
 
-  it("exige senha quando o provedor e LOCAL", async () => {
-    const { service } = montarService();
+  it("gera e envia uma senha temporaria para usuario LOCAL", async () => {
+    const { service, registros } = montarService();
 
-    const erro = await capturarErro(() =>
-      service.criar(
-        {
-          nomeExibicao: "Joao",
-          emailLogin: "joao@redfox.com",
-          provedorAuth: "LOCAL",
-          grupoIds: [],
-        },
-        ATOR
-      )
+    await service.criar(
+      {
+        nomeExibicao: "Joao",
+        emailLogin: "joao@redfox.com",
+        provedorAuth: "LOCAL",
+        grupoIds: [],
+      },
+      ATOR
     );
 
-    assert.equal(erro.status, 422);
-    assert.ok(erro.campos?.senha);
+    assert.equal(registros.emailsEnviados.length, 1);
+    assert.equal(registros.emailsEnviados[0].email, "joao@redfox.com");
+    assert.ok(registros.emailsEnviados[0].senhaTemporaria.length >= 16);
   });
 
   it("exige funcionarioIxcId e snapshot juntos", async () => {
@@ -170,7 +173,6 @@ describe("usuarios.service criar", () => {
         {
           nomeExibicao: "Joao",
           emailLogin: "joao@redfox.com",
-          senha: "senha-forte-123",
           provedorAuth: "LOCAL",
           funcionarioIxcId: "4321",
           grupoIds: [],
@@ -191,7 +193,6 @@ describe("usuarios.service criar", () => {
         {
           nomeExibicao: "Joao",
           emailLogin: "joao@redfox.com",
-          senha: "senha-forte-123",
           provedorAuth: "LOCAL",
           funcionarioIxcId: "4321",
           funcionarioNomeSnapshot: "Joao Pedro",
@@ -215,7 +216,6 @@ describe("usuarios.service criar", () => {
         {
           nomeExibicao: "Joao",
           emailLogin: "joao@redfox.com",
-          senha: "senha-forte-123",
           provedorAuth: "LOCAL",
           grupoIds: [ID_GRUPO],
         },
@@ -235,7 +235,6 @@ describe("usuarios.service criar", () => {
         {
           nomeExibicao: "Joao",
           emailLogin: "joao@redfox.com",
-          senha: "senha-forte-123",
           provedorAuth: "LOCAL",
           grupoIds: [ID_GRUPO],
         },
@@ -253,7 +252,6 @@ describe("usuarios.service criar", () => {
       {
         nomeExibicao: "Joao",
         emailLogin: "joao@redfox.com",
-        senha: "senha-forte-123",
         provedorAuth: "LOCAL",
         grupoIds: [],
       },

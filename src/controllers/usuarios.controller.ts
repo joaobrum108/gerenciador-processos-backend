@@ -18,7 +18,6 @@ const esquemaId = z.object({ id: z.uuid("Identificador invalido") });
 const esquemaCriacao = z.object({
   nomeExibicao: z.string({ error: "Informe o nome de exibicao" }).trim().min(1, "Informe o nome de exibicao").max(150),
   emailLogin: z.string({ error: "Informe o e-mail" }).trim().min(1, "Informe o e-mail").max(254),
-  senha: z.string().min(8, "A senha deve ter ao menos 8 caracteres").optional(),
   provedorAuth: z.enum(["LOCAL", "AD", "SSO"]).default("LOCAL"),
   funcionarioIxcId: z.string().trim().max(100).optional(),
   funcionarioNomeSnapshot: z.string().trim().max(150).optional(),

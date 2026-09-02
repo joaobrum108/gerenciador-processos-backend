@@ -9,7 +9,7 @@ router.get(
   "/",
   autenticar,
   autorizar("usuarios.permissoes.view", "usuarios.grupos.view"),
-  permissoesController.listar
+  permissoesController.listar,
 );
 
 export default router;

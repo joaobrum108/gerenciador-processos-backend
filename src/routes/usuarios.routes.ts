@@ -5,31 +5,17 @@ import { autorizar } from "../middlewares/autorizar.ts";
 
 const router = Router();
 
-// router.use(autenticar);
+router.use(autenticar);
 
-router.get("/", usuariosController.listar);
-
-// router.get("/", autorizar("usuarios.acessos.view"), usuariosController.listar);
-router.post("/", autorizar("usuarios.acessos.criar"), usuariosController.criar);
 router.get(
-  "/:id",
-  autorizar("usuarios.acessos.view"),
-  usuariosController.detalhar,
+  "/",
+  autorizar("usuarios.acessosSistema.view"),
+  usuariosController.listar,
 );
-router.patch(
-  "/:id",
-  autorizar("usuarios.acessos.editar"),
-  usuariosController.atualizar,
-);
-router.patch(
-  "/:id/status",
-  autorizar("usuarios.acessos.status"),
-  usuariosController.alterarStatus,
-);
-router.post(
-  "/:id/redefinir-senha",
-  autorizar("usuarios.acessos.senha"),
-  usuariosController.redefinirSenha,
-);
+router.post("/", usuariosController.criar);
+router.get("/:id", usuariosController.detalhar);
+router.patch("/:id", usuariosController.atualizar);
+router.patch("/:id/status", usuariosController.alterarStatus);
+router.post("/:id/redefinir-senha", usuariosController.redefinirSenha);
 
 export default router;

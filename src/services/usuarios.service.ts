@@ -4,13 +4,16 @@ import * as usuariosRepositoryPadrao from "../repositories/usuarios.repository.t
 import * as gruposRepositoryPadrao from "../repositories/grupos-permissao.repository.ts";
 import * as sessoesRepositoryPadrao from "../repositories/sessoes.repository.ts";
 import * as auditoriaRepositoryPadrao from "../repositories/auditoria.repository.ts";
+import { emailService as emailServicePadrao } from "./email.service.ts";
 import { emTransacao as emTransacaoPadrao } from "../database/pool.ts";
 import {
+  ErroAplicacao,
   ErroConflito,
   ErroNaoEncontrado,
   ErroRegraNegocio,
   ErroValidacao,
 } from "../erros.ts";
+import type { EmailService } from "./email.service.ts";
 import type {
   FiltrosUsuarios,
   UsuarioRegistro,
@@ -34,7 +37,6 @@ export interface UsuarioResposta {
 export interface EntradaCriacaoUsuario {
   nomeExibicao: string;
   emailLogin: string;
-  senha?: string | undefined;
   provedorAuth: string;
   funcionarioIxcId?: string | undefined;
   funcionarioNomeSnapshot?: string | undefined;
@@ -61,6 +63,7 @@ interface DependenciasUsuarios {
   gruposRepository: typeof gruposRepositoryPadrao;
   sessoesRepository: typeof sessoesRepositoryPadrao;
   auditoriaRepository: typeof auditoriaRepositoryPadrao;
+  emailService: EmailService;
   emTransacao: typeof emTransacaoPadrao;
   rodadasBcrypt: number;
 }
@@ -100,6 +103,7 @@ export function criarUsuariosService(
     dependencias.sessoesRepository ?? sessoesRepositoryPadrao;
   const auditoriaRepository =
     dependencias.auditoriaRepository ?? auditoriaRepositoryPadrao;
+  const emailService = dependencias.emailService ?? emailServicePadrao;
   const emTransacao = dependencias.emTransacao ?? emTransacaoPadrao;
   const rodadasBcrypt =
     dependencias.rodadasBcrypt ?? Number(process.env.BCRYPT_ROUNDS ?? 10);
@@ -180,12 +184,6 @@ export function criarUsuariosService(
   ): Promise<UsuarioResposta> {
     const emailLogin = normalizarEmail(entrada.emailLogin);
 
-    if (entrada.provedorAuth === "LOCAL" && !entrada.senha) {
-      throw new ErroValidacao({
-        senha: ["Senha e obrigatoria quando o provedor e LOCAL"],
-      });
-    }
-
     validarVinculoIxc(entrada.funcionarioIxcId, entrada.funcionarioNomeSnapshot);
 
     if (await usuariosRepository.emailJaUsado(emailLogin)) {
@@ -207,8 +205,12 @@ export function criarUsuariosService(
 
     await validarGrupos(entrada.grupoIds);
 
-    const senhaHash = entrada.senha
-      ? await bcrypt.hash(entrada.senha, rodadasBcrypt)
+    const senhaTemporaria =
+      entrada.provedorAuth === "LOCAL"
+        ? randomBytes(12).toString("base64url")
+        : null;
+    const senhaHash = senhaTemporaria
+      ? await bcrypt.hash(senhaTemporaria, rodadasBcrypt)
       : null;
 
     const criado = await emTransacao(async (cliente) => {
@@ -252,6 +254,23 @@ export function criarUsuariosService(
 
       return usuario;
     });
+
+    if (senhaTemporaria) {
+      try {
+        await emailService.enviarCredenciaisNovoUsuario({
+          nome: criado.nomeExibicao,
+          email: criado.emailLogin,
+          senhaTemporaria,
+        });
+      } catch (erro) {
+        console.error("Falha ao enviar credenciais do novo usuario", erro);
+        throw new ErroAplicacao(
+          502,
+          "EMAIL_NAO_ENVIADO",
+          "Usuario criado, mas nao foi possivel enviar o e-mail de acesso"
+        );
+      }
+    }
 
     return buscarPorId(criado.id);
   }
