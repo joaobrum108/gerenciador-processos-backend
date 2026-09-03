@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import * as usuariosRepositoryPadrao from "../repositories/usuarios.repository.ts";
 import * as sessoesRepositoryPadrao from "../repositories/sessoes.repository.ts";
-import { ErroNaoAutenticado } from "../erros.ts";
+import { ErroNaoAutenticado, ErroRegraNegocio } from "../erros.ts";
 import type { UsuarioRegistro } from "../repositories/usuarios.repository.ts";
 
 export interface UsuarioAutenticado {
@@ -40,6 +40,15 @@ interface DependenciasAuth {
   usuariosRepository: typeof usuariosRepositoryPadrao;
   sessoesRepository: typeof sessoesRepositoryPadrao;
   configuracao: ConfiguracaoAuth;
+}
+
+/**
+ * `database-api.md` §6: usuarios INATIVO ou CONVITE_PENDENTE nao sao autorizados.
+ * `ativo` e `status` sao mantidos em sincronia na escrita, mas quem escreve por
+ * SQL puro pode divergir os dois, entao o acesso exige os dois concordando.
+ */
+function podeAcessar(usuario: UsuarioRegistro): boolean {
+  return usuario.ativo && usuario.status === "ATIVO";
 }
 
 function configuracaoDoAmbiente(): ConfiguracaoAuth {
@@ -153,7 +162,7 @@ export function criarAuthService(dependencias: Partial<DependenciasAuth> = {}) {
       throw new ErroNaoAutenticado("E-mail ou senha invalidos");
     }
 
-    if (!usuario.ativo) {
+    if (!podeAcessar(usuario)) {
       throw new ErroNaoAutenticado(
         "Usuario inativo",
         "USUARIO_INATIVO"
@@ -203,7 +212,7 @@ export function criarAuthService(dependencias: Partial<DependenciasAuth> = {}) {
 
     const usuario = await usuariosRepository.buscarPorId(sessao.usuarioId);
 
-    if (!usuario || !usuario.ativo) {
+    if (!usuario || !podeAcessar(usuario)) {
       await sessoesRepository.revogar(sessao.id, "BLOQUEIO_USUARIO");
       throw new ErroNaoAutenticado("Usuario inativo", "USUARIO_INATIVO");
     }
@@ -266,11 +275,54 @@ export function criarAuthService(dependencias: Partial<DependenciasAuth> = {}) {
 
     const usuario = await usuariosRepository.buscarPorId(usuarioId);
 
-    if (!usuario || !usuario.ativo) {
+    if (!usuario || !podeAcessar(usuario)) {
       throw new ErroNaoAutenticado("Usuario inativo", "USUARIO_INATIVO");
     }
 
     return montarUsuarioAutenticado(usuario);
+  }
+
+  /**
+   * Troca de senha pelo proprio usuario. Exige a senha atual — diferente de
+   * `usuarios.redefinirSenha`, que e administrativa e sorteia uma senha.
+   *
+   * Ao final revoga todas as sessoes: quem trocou a senha precisa entrar de
+   * novo, e qualquer sessao aberta em outro dispositivo cai junto.
+   */
+  async function trocarSenha(
+    usuarioId: string,
+    senhaAtual: string,
+    senhaNova: string
+  ): Promise<void> {
+    const usuario = await usuariosRepository.buscarComSenhaPorId(usuarioId);
+
+    if (!usuario || !podeAcessar(usuario)) {
+      throw new ErroNaoAutenticado("Usuario inativo", "USUARIO_INATIVO");
+    }
+
+    if (usuario.provedorAuth !== "LOCAL" || !usuario.senhaHash) {
+      throw new ErroRegraNegocio(
+        "Somente usuarios com provedor LOCAL possuem senha neste sistema",
+        "PROVEDOR_SEM_SENHA_LOCAL"
+      );
+    }
+
+    if (!(await bcrypt.compare(senhaAtual, usuario.senhaHash))) {
+      throw new ErroNaoAutenticado("Senha atual incorreta", "SENHA_INCORRETA");
+    }
+
+    if (await bcrypt.compare(senhaNova, usuario.senhaHash)) {
+      throw new ErroRegraNegocio(
+        "A nova senha deve ser diferente da atual",
+        "SENHA_REPETIDA"
+      );
+    }
+
+    const rodadas = Number(process.env.BCRYPT_ROUNDS ?? 10);
+    const senhaHash = await bcrypt.hash(senhaNova, rodadas);
+
+    await usuariosRepository.definirSenha(usuarioId, senhaHash, false);
+    await sessoesRepository.revogarTodasDoUsuario(usuarioId, "TROCA_SENHA");
   }
 
   async function usuarioAutenticado(
@@ -289,6 +341,7 @@ export function criarAuthService(dependencias: Partial<DependenciasAuth> = {}) {
     login,
     renovar,
     sair,
+    trocarSenha,
     resolverUsuarioDoAccessToken,
     usuarioAutenticado,
   };

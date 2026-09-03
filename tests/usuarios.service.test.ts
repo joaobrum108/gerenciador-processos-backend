@@ -19,6 +19,9 @@ function usuarioFalso(sobrescritas: Record<string, unknown> = {}) {
     funcionarioNomeSnapshot: null,
     nomeExibicao: "Joao",
     emailLogin: "joao@redfox.com",
+    cargo: "Tecnico",
+    status: "ATIVO",
+    escala: "5x2",
     provedorAuth: "LOCAL",
     ativo: true,
     deveTrocarSenha: false,
@@ -37,6 +40,8 @@ function montarService(opcoes: {
   funcionarioJaVinculado?: boolean;
   grupo?: { id: string; nome: string; ativo: boolean } | null;
   atualizacaoRetorna?: ReturnType<typeof usuarioFalso> | null;
+  smtpConfigurado?: boolean;
+  gruposDoUsuario?: { id: string; nome: string; ativo: boolean }[];
 } = {}) {
   const usuario =
     opcoes.usuario === undefined ? usuarioFalso() : opcoes.usuario;
@@ -48,6 +53,7 @@ function montarService(opcoes: {
     senhasDefinidas: [] as any[],
     ativoAlterado: [] as boolean[],
     emailsEnviados: [] as any[],
+    usuariosCriados: [] as any[],
   };
 
   const service = criarUsuariosService({
@@ -55,11 +61,14 @@ function montarService(opcoes: {
     emTransacao: (async (operacao: any) => operacao({} as any)) as any,
     usuariosRepository: {
       buscarPorId: async () => usuario,
-      buscarGrupos: async () => [],
+      buscarGrupos: async () => opcoes.gruposDoUsuario ?? [],
       buscarGruposDeVarios: async () => new Map(),
       emailJaUsado: async () => opcoes.emailJaUsado ?? false,
       funcionarioJaVinculado: async () => opcoes.funcionarioJaVinculado ?? false,
-      criar: async (dados: any) => usuarioFalso(dados),
+      criar: async (dados: any) => {
+        registros.usuariosCriados.push(dados);
+        return usuarioFalso(dados);
+      },
       atualizar: async () =>
         opcoes.atualizacaoRetorna === undefined
           ? usuarioFalso()
@@ -93,6 +102,7 @@ function montarService(opcoes: {
       },
     } as any,
     emailService: {
+      configurado: () => opcoes.smtpConfigurado ?? true,
       enviarCredenciaisNovoUsuario: async (credenciais: any) => {
         registros.emailsEnviados.push(credenciais);
       },
@@ -163,6 +173,97 @@ describe("usuarios.service criar", () => {
     assert.equal(registros.emailsEnviados.length, 1);
     assert.equal(registros.emailsEnviados[0].email, "joao@redfox.com");
     assert.ok(registros.emailsEnviados[0].senhaTemporaria.length >= 16);
+  });
+
+  it("nao devolve a senha na resposta quando o e-mail foi enviado", async () => {
+    const { service } = montarService({ smtpConfigurado: true });
+
+    const criado = await service.criar(
+      {
+        nomeExibicao: "Joao",
+        emailLogin: "joao@redfox.com",
+        provedorAuth: "LOCAL",
+        grupoIds: [],
+      },
+      ATOR
+    );
+
+    assert.equal(criado.senhaTemporaria, undefined);
+  });
+
+  it("devolve a senha temporaria na resposta quando nao ha SMTP configurado", async () => {
+    const { service, registros } = montarService({ smtpConfigurado: false });
+
+    const criado = await service.criar(
+      {
+        nomeExibicao: "Joao",
+        emailLogin: "joao@redfox.com",
+        provedorAuth: "LOCAL",
+        grupoIds: [],
+      },
+      ATOR
+    );
+
+    assert.equal(registros.emailsEnviados.length, 0);
+    assert.ok((criado.senhaTemporaria ?? "").length >= 16);
+  });
+
+  it("nao gera senha nem devolve nada para provedor nao LOCAL", async () => {
+    const { service, registros } = montarService({ smtpConfigurado: false });
+
+    const criado = await service.criar(
+      {
+        nomeExibicao: "Joao",
+        emailLogin: "joao@redfox.com",
+        provedorAuth: "AD",
+        grupoIds: [],
+      },
+      ATOR
+    );
+
+    assert.equal(registros.emailsEnviados.length, 0);
+    assert.equal(criado.senhaTemporaria, undefined);
+  });
+
+  it("aplica cargo, escala e status padrao quando omitidos", async () => {
+    const { service, registros } = montarService();
+
+    await service.criar(
+      {
+        nomeExibicao: "Joao",
+        emailLogin: "joao@redfox.com",
+        provedorAuth: "LOCAL",
+        grupoIds: [],
+      },
+      ATOR
+    );
+
+    const gravado = registros.usuariosCriados[0];
+    assert.equal(gravado.cargo, "Não informado");
+    assert.equal(gravado.escala, "5x2");
+    assert.equal(gravado.status, "ATIVO");
+  });
+
+  it("grava cargo, escala e status informados", async () => {
+    const { service, registros } = montarService();
+
+    await service.criar(
+      {
+        nomeExibicao: "Joao",
+        emailLogin: "joao@redfox.com",
+        cargo: "  Tecnico de Campo  ",
+        escala: "12x36",
+        status: "CONVITE_PENDENTE",
+        provedorAuth: "LOCAL",
+        grupoIds: [],
+      },
+      ATOR
+    );
+
+    const gravado = registros.usuariosCriados[0];
+    assert.equal(gravado.cargo, "Tecnico de Campo");
+    assert.equal(gravado.escala, "12x36");
+    assert.equal(gravado.status, "CONVITE_PENDENTE");
   });
 
   it("exige funcionarioIxcId e snapshot juntos", async () => {
@@ -401,5 +502,79 @@ describe("usuarios.service redefinirSenha", () => {
     const segunda = await service.redefinirSenha(ID_USUARIO, ATOR);
 
     assert.notEqual(primeira.senhaTemporaria, segunda.senhaTemporaria);
+  });
+});
+
+describe("usuarios.service protecao do administrador master", () => {
+  const GRUPO_MASTER = {
+    id: "33333333-3333-3333-3333-333333333333",
+    nome: "Administrador Master",
+    ativo: true,
+  };
+
+  it("trata o usuario master como inexistente em buscarPorId", async () => {
+    const { service } = montarService({ gruposDoUsuario: [GRUPO_MASTER] });
+
+    const erro = await capturarErro(() => service.buscarPorId(ID_USUARIO));
+
+    assert.equal(erro.status, 404);
+    assert.equal(erro.codigo, "NAO_ENCONTRADO");
+  });
+
+  it("recusa alterar o status do usuario master", async () => {
+    const { service } = montarService({ gruposDoUsuario: [GRUPO_MASTER] });
+
+    const erro = await capturarErro(() =>
+      service.alterarStatus(ID_USUARIO, false, null, ATOR)
+    );
+
+    assert.equal(erro.status, 404);
+  });
+
+  it("recusa redefinir a senha do usuario master", async () => {
+    const { service } = montarService({ gruposDoUsuario: [GRUPO_MASTER] });
+
+    const erro = await capturarErro(() =>
+      service.redefinirSenha(ID_USUARIO, ATOR)
+    );
+
+    assert.equal(erro.status, 404);
+  });
+
+  it("recusa atribuir o grupo master a um usuario novo", async () => {
+    const { service } = montarService({ grupo: GRUPO_MASTER });
+
+    const erro = await capturarErro(() =>
+      service.criar(
+        {
+          nomeExibicao: "Joao",
+          emailLogin: "joao@redfox.com",
+          provedorAuth: "LOCAL",
+          grupoIds: [GRUPO_MASTER.id],
+        },
+        ATOR
+      )
+    );
+
+    assert.equal(erro.status, 422);
+    assert.equal(erro.codigo, "DADOS_INVALIDOS");
+  });
+
+  it("nao registra o usuario quando o grupo master e recusado", async () => {
+    const { service, registros } = montarService({ grupo: GRUPO_MASTER });
+
+    await capturarErro(() =>
+      service.criar(
+        {
+          nomeExibicao: "Joao",
+          emailLogin: "joao@redfox.com",
+          provedorAuth: "LOCAL",
+          grupoIds: [GRUPO_MASTER.id],
+        },
+        ATOR
+      )
+    );
+
+    assert.equal(registros.usuariosCriados.length, 0);
   });
 });

@@ -2,6 +2,7 @@ import * as gruposRepositoryPadrao from "../repositories/grupos-permissao.reposi
 import * as permissoesRepositoryPadrao from "../repositories/permissoes.repository.ts";
 import * as auditoriaRepositoryPadrao from "../repositories/auditoria.repository.ts";
 import { emTransacao as emTransacaoPadrao } from "../database/pool.ts";
+import { ehGrupoMaster } from "../config/master.ts";
 import {
   ErroConflito,
   ErroNaoEncontrado,
@@ -55,6 +56,16 @@ function paraResposta(grupo: GrupoRegistro): GrupoResposta {
   };
 }
 
+/**
+ * O grupo master nao e administravel pelo portal. Tratamos como inexistente em
+ * vez de 403 para nao confirmar que ele existe.
+ */
+function recusarSeMaster(grupo: GrupoRegistro): void {
+  if (ehGrupoMaster(grupo.nome)) {
+    throw new ErroNaoEncontrado("Grupo nao encontrado");
+  }
+}
+
 export function criarGruposPermissaoService(
   dependencias: Partial<DependenciasGrupos> = {}
 ) {
@@ -85,6 +96,8 @@ export function criarGruposPermissaoService(
       throw new ErroNaoEncontrado("Grupo nao encontrado");
     }
 
+    recusarSeMaster(grupo);
+
     return {
       ...paraResposta(grupo),
       totalUsuarios: await gruposRepository.contarUsuarios(id),
@@ -96,6 +109,10 @@ export function criarGruposPermissaoService(
     ator: ContextoAtor
   ): Promise<GrupoResposta> {
     const nome = entrada.nome.trim();
+
+    if (ehGrupoMaster(nome)) {
+      throw new ErroConflito("Ja existe um grupo com este nome", "NOME_EM_USO");
+    }
 
     if (await gruposRepository.nomeJaUsado(nome)) {
       throw new ErroConflito("Ja existe um grupo com este nome", "NOME_EM_USO");
@@ -127,6 +144,8 @@ export function criarGruposPermissaoService(
     if (!atual) {
       throw new ErroNaoEncontrado("Grupo nao encontrado");
     }
+
+    recusarSeMaster(atual);
 
     const nome = entrada.nome.trim();
 
@@ -203,6 +222,8 @@ export function criarGruposPermissaoService(
       throw new ErroNaoEncontrado("Grupo nao encontrado");
     }
 
+    recusarSeMaster(atual);
+
     const totalUsuarios = await gruposRepository.contarUsuarios(id);
 
     if (totalUsuarios > 0) {
@@ -237,6 +258,8 @@ export function criarGruposPermissaoService(
       throw new ErroNaoEncontrado("Grupo nao encontrado");
     }
 
+    recusarSeMaster(grupo);
+
     return gruposRepository.buscarPermissoes(id);
   }
 
@@ -250,6 +273,8 @@ export function criarGruposPermissaoService(
     if (!grupo) {
       throw new ErroNaoEncontrado("Grupo nao encontrado");
     }
+
+    recusarSeMaster(grupo);
 
     const unicas = [...new Set(permissaoIds)];
     const inexistentes = await permissoesRepository.listarIdsInexistentes(

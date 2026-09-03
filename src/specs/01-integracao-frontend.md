@@ -20,14 +20,7 @@
 Para Vite/Vue, crie `.env.development.local`:
 
 ```dotenv
-# Valor recomendado após o backend montar o prefixo /api/v1
 VITE_API_URL=http://localhost:3200/api/v1
-```
-
-Enquanto o servidor permanecer exatamente como está em 02/09/2026, o valor compatível é:
-
-```dotenv
-VITE_API_URL=http://localhost:3200
 ```
 
 Não copie `DATABASE_URL`, `JWT_SECRET` ou qualquer configuração do backend para o frontend. Toda variável prefixada por `VITE_` é incorporada ao bundle e deve ser considerada pública.
@@ -36,7 +29,7 @@ Se o projeto não usar Vite, adapte somente o nome da variável ao mecanismo do 
 
 ## Proxy de desenvolvimento
 
-Como o backend ainda não configura CORS, o frontend pode usar temporariamente o proxy do Vite:
+O backend já configura CORS, então o proxy é opcional. Ele continua útil para evitar preflight em desenvolvimento:
 
 ```ts
 // vite.config.ts
@@ -54,7 +47,7 @@ export default defineConfig({
 });
 ```
 
-Esse exemplo pressupõe que o backend será corrigido para expor `/api/v1`. Nesse cenário, use `VITE_API_URL=/api/v1`. O proxy é apenas para desenvolvimento; produção precisa de mesma origem, reverse proxy ou CORS configurado no backend.
+Com o proxy, use `VITE_API_URL=/api/v1`. O proxy é apenas para desenvolvimento; produção precisa de mesma origem, reverse proxy ou o CORS do backend restrito à origem real.
 
 ## Contrato sugerido para `src/services/api.ts`
 
@@ -184,11 +177,7 @@ Use as permissões retornadas no login e em `/auth/me`. As permissões exigidas 
 
 | Área/ação | Permissão |
 |---|---|
-| Ver usuários | `usuarios.acessos.view` |
-| Criar usuário | `usuarios.acessos.criar` |
-| Editar usuário | `usuarios.acessos.editar` |
-| Alterar status | `usuarios.acessos.status` |
-| Redefinir senha | `usuarios.acessos.senha` |
+| Ver, criar, editar, alterar status e redefinir senha de usuários | `usuarios.acessosSistema.view` |
 | Ver grupos | `usuarios.grupos.view` |
 | Criar grupo | `usuarios.grupos.criar` |
 | Editar grupo | `usuarios.grupos.editar` |

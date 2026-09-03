@@ -8,5 +8,6 @@ router.post("/login", authController.login);
 router.post("/refresh", authController.renovar);
 router.post("/logout", authController.sair);
 router.get("/me", autenticar, authController.eu);
+router.post("/trocar-senha", autenticar, authController.trocarSenha);
 
 export default router;

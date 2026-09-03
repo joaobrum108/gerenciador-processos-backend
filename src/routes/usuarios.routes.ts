@@ -5,13 +5,14 @@ import { autorizar } from "../middlewares/autorizar.ts";
 
 const router = Router();
 
-router.use(autenticar);
+// Toda a administracao de acessos exige a mesma permissao: quem enxerga a tela
+// de acessos ao sistema opera nela por inteiro.
+const PERMISSAO_ACESSOS = "usuarios.acessosSistema.view";
 
-router.get(
-  "/",
-  autorizar("usuarios.acessosSistema.view"),
-  usuariosController.listar,
-);
+router.use(autenticar);
+router.use(autorizar(PERMISSAO_ACESSOS));
+
+router.get("/", usuariosController.listar);
 router.post("/", usuariosController.criar);
 router.get("/:id", usuariosController.detalhar);
 router.patch("/:id", usuariosController.atualizar);

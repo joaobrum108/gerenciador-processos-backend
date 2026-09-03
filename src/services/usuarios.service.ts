@@ -6,6 +6,7 @@ import * as sessoesRepositoryPadrao from "../repositories/sessoes.repository.ts"
 import * as auditoriaRepositoryPadrao from "../repositories/auditoria.repository.ts";
 import { emailService as emailServicePadrao } from "./email.service.ts";
 import { emTransacao as emTransacaoPadrao } from "../database/pool.ts";
+import { ehGrupoMaster, pertenceAoMaster } from "../config/master.ts";
 import {
   ErroAplicacao,
   ErroConflito,
@@ -15,7 +16,9 @@ import {
 } from "../erros.ts";
 import type { EmailService } from "./email.service.ts";
 import type {
+  EscalaTrabalho,
   FiltrosUsuarios,
+  StatusUsuario,
   UsuarioRegistro,
 } from "../repositories/usuarios.repository.ts";
 
@@ -23,6 +26,9 @@ export interface UsuarioResposta {
   id: string;
   nomeExibicao: string;
   emailLogin: string;
+  cargo: string;
+  status: StatusUsuario;
+  escala: EscalaTrabalho;
   funcionarioIxcId: string | null;
   funcionarioNomeSnapshot: string | null;
   provedorAuth: string;
@@ -34,9 +40,25 @@ export interface UsuarioResposta {
   grupos: { id: string; nome: string }[];
 }
 
+/**
+ * Resposta da criacao. `senhaTemporaria` so vem quando nao ha SMTP configurado:
+ * nesse caso a senha nao tem como chegar ao usuario por e-mail, e some para
+ * sempre se nao voltar aqui.
+ */
+export interface UsuarioCriado extends UsuarioResposta {
+  senhaTemporaria?: string;
+}
+
+export const CARGO_PADRAO = "Não informado";
+export const ESCALA_PADRAO: EscalaTrabalho = "5x2";
+export const STATUS_PADRAO: StatusUsuario = "ATIVO";
+
 export interface EntradaCriacaoUsuario {
   nomeExibicao: string;
   emailLogin: string;
+  cargo?: string | undefined;
+  escala?: EscalaTrabalho | undefined;
+  status?: StatusUsuario | undefined;
   provedorAuth: string;
   funcionarioIxcId?: string | undefined;
   funcionarioNomeSnapshot?: string | undefined;
@@ -46,6 +68,8 @@ export interface EntradaCriacaoUsuario {
 export interface EntradaAtualizacaoUsuario {
   nomeExibicao: string;
   emailLogin: string;
+  cargo?: string | undefined;
+  escala?: EscalaTrabalho | undefined;
   funcionarioIxcId?: string | undefined;
   funcionarioNomeSnapshot?: string | undefined;
   grupoIds: string[];
@@ -80,6 +104,9 @@ function paraResposta(
     id: usuario.id,
     nomeExibicao: usuario.nomeExibicao,
     emailLogin: usuario.emailLogin,
+    cargo: usuario.cargo,
+    status: usuario.status,
+    escala: usuario.escala,
     funcionarioIxcId: usuario.funcionarioIxcId,
     funcionarioNomeSnapshot: usuario.funcionarioNomeSnapshot,
     provedorAuth: usuario.provedorAuth,
@@ -172,16 +199,41 @@ export function criarUsuariosService(
 
     const grupos = await usuariosRepository.buscarGrupos(id);
 
+    // O master nao existe para a administracao do portal, nem por id.
+    if (pertenceAoMaster(grupos)) {
+      throw new ErroNaoEncontrado("Usuario nao encontrado");
+    }
+
     return paraResposta(
       usuario,
       grupos.map((grupo) => ({ id: grupo.id, nome: grupo.nome }))
     );
   }
 
+  /** Recusa operar sobre a conta master pelas rotas de administracao. */
+  async function recusarMaster(id: string): Promise<void> {
+    if (pertenceAoMaster(await usuariosRepository.buscarGrupos(id))) {
+      throw new ErroNaoEncontrado("Usuario nao encontrado");
+    }
+  }
+
+  /** Impede que o grupo master seja atribuido a alguem pelo portal. */
+  async function recusarGrupoMaster(grupoIds: string[]): Promise<void> {
+    for (const grupoId of grupoIds) {
+      const grupo = await gruposRepository.buscarPorId(grupoId);
+
+      if (grupo && ehGrupoMaster(grupo.nome)) {
+        throw new ErroValidacao({
+          grupoIds: [`Grupo ${grupoId} nao encontrado`],
+        });
+      }
+    }
+  }
+
   async function criar(
     entrada: EntradaCriacaoUsuario,
     ator: ContextoAtor
-  ): Promise<UsuarioResposta> {
+  ): Promise<UsuarioCriado> {
     const emailLogin = normalizarEmail(entrada.emailLogin);
 
     validarVinculoIxc(entrada.funcionarioIxcId, entrada.funcionarioNomeSnapshot);
@@ -204,6 +256,7 @@ export function criarUsuariosService(
     }
 
     await validarGrupos(entrada.grupoIds);
+    await recusarGrupoMaster(entrada.grupoIds);
 
     const senhaTemporaria =
       entrada.provedorAuth === "LOCAL"
@@ -218,6 +271,9 @@ export function criarUsuariosService(
         {
           nomeExibicao: entrada.nomeExibicao.trim(),
           emailLogin,
+          cargo: entrada.cargo?.trim() || CARGO_PADRAO,
+          escala: entrada.escala ?? ESCALA_PADRAO,
+          status: entrada.status ?? STATUS_PADRAO,
           senhaHash,
           provedorAuth: entrada.provedorAuth,
           funcionarioIxcId: entrada.funcionarioIxcId ?? null,
@@ -255,24 +311,36 @@ export function criarUsuariosService(
       return usuario;
     });
 
+    // Sem SMTP configurado nao ha como entregar a senha por e-mail, e ela so
+    // existe em memoria: devolver na resposta e a unica forma de nao perde-la.
+    let senhaParaDevolver: string | undefined;
+
     if (senhaTemporaria) {
-      try {
-        await emailService.enviarCredenciaisNovoUsuario({
-          nome: criado.nomeExibicao,
-          email: criado.emailLogin,
-          senhaTemporaria,
-        });
-      } catch (erro) {
-        console.error("Falha ao enviar credenciais do novo usuario", erro);
-        throw new ErroAplicacao(
-          502,
-          "EMAIL_NAO_ENVIADO",
-          "Usuario criado, mas nao foi possivel enviar o e-mail de acesso"
-        );
+      if (emailService.configurado()) {
+        try {
+          await emailService.enviarCredenciaisNovoUsuario({
+            nome: criado.nomeExibicao,
+            email: criado.emailLogin,
+            senhaTemporaria,
+          });
+        } catch (erro) {
+          console.error("Falha ao enviar credenciais do novo usuario", erro);
+          throw new ErroAplicacao(
+            502,
+            "EMAIL_NAO_ENVIADO",
+            "Usuario criado, mas nao foi possivel enviar o e-mail de acesso"
+          );
+        }
+      } else {
+        senhaParaDevolver = senhaTemporaria;
       }
     }
 
-    return buscarPorId(criado.id);
+    const usuario = await buscarPorId(criado.id);
+
+    return senhaParaDevolver === undefined
+      ? usuario
+      : { ...usuario, senhaTemporaria: senhaParaDevolver };
   }
 
   async function atualizar(
@@ -285,6 +353,8 @@ export function criarUsuariosService(
     if (!atual) {
       throw new ErroNaoEncontrado("Usuario nao encontrado");
     }
+
+    await recusarMaster(id);
 
     const emailLogin = normalizarEmail(entrada.emailLogin);
 
@@ -311,6 +381,7 @@ export function criarUsuariosService(
     }
 
     await validarGrupos(entrada.grupoIds);
+    await recusarGrupoMaster(entrada.grupoIds);
 
     await emTransacao(async (cliente) => {
       const atualizado = await usuariosRepository.atualizar(
@@ -318,6 +389,10 @@ export function criarUsuariosService(
         {
           nomeExibicao: entrada.nomeExibicao.trim(),
           emailLogin,
+          // Omitir cargo/escala preserva o que ja estava gravado, em vez de
+          // silenciosamente devolve-los ao valor padrao.
+          cargo: entrada.cargo?.trim() || atual.cargo,
+          escala: entrada.escala ?? atual.escala,
           funcionarioIxcId: entrada.funcionarioIxcId ?? null,
           funcionarioNomeSnapshot: entrada.funcionarioNomeSnapshot ?? null,
         },
@@ -373,6 +448,8 @@ export function criarUsuariosService(
       throw new ErroNaoEncontrado("Usuario nao encontrado");
     }
 
+    await recusarMaster(id);
+
     if (atual.id === ator.usuarioId && !ativo) {
       throw new ErroRegraNegocio(
         "Nao e possivel bloquear o proprio usuario",
@@ -413,6 +490,8 @@ export function criarUsuariosService(
     if (!usuario) {
       throw new ErroNaoEncontrado("Usuario nao encontrado");
     }
+
+    await recusarMaster(id);
 
     if (usuario.provedorAuth !== "LOCAL") {
       throw new ErroRegraNegocio(

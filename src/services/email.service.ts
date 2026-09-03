@@ -7,6 +7,11 @@ export interface CredenciaisNovoUsuario {
 }
 
 export interface EmailService {
+  /**
+   * Informa se ha SMTP para enviar. Quando nao ha, quem cria o usuario devolve a
+   * senha temporaria na resposta em vez de tentar um envio que falharia.
+   */
+  configurado(): boolean;
   enviarCredenciaisNovoUsuario(
     credenciais: CredenciaisNovoUsuario
   ): Promise<void>;
@@ -40,6 +45,15 @@ function configuracaoSmtp() {
 }
 
 export const emailService: EmailService = {
+  configurado(): boolean {
+    return Boolean(
+      process.env.SMTP_HOST &&
+        process.env.SMTP_USER &&
+        process.env.SMTP_PASS &&
+        process.env.SMTP_FROM
+    );
+  },
+
   async enviarCredenciaisNovoUsuario({
     nome,
     email,

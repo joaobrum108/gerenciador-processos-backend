@@ -5,27 +5,27 @@ Este documento foi extraído das rotas, controllers e services existentes em 02/
 ## URL-base real
 
 ```text
-http://localhost:<PORT>
+http://localhost:<PORT>/api/v1
 ```
 
-Com o `.env.example`, a URL é `http://localhost:3200`. O código atual **não** adiciona `/api/v1`.
+Com o `.env.example`, a URL é `http://localhost:3200/api/v1`.
 
 ## Variáveis do backend
 
 | Variável | Obrigatória | Padrão no código | Uso |
 |---|---:|---|---|
-| `PORT` | Sim para execução previsível | nenhum | Porta HTTP |
+| `PORT` | Não | `3200` | Porta HTTP |
 | `DATABASE_URL` | Sim | nenhum | Conexão PostgreSQL |
-| `JWT_SECRET` | Sim ao usar autenticação | nenhum | Assinatura e validação do access token |
+| `JWT_SECRET` | Sim, validada no boot | nenhum | Assinatura e validação do access token; mínimo 32 caracteres |
 | `JWT_EXPIRACAO` | Não | `15m` | Duração do access token |
 | `REFRESH_EXPIRACAO_DIAS` | Não | `7` | Duração e renovação do refresh token |
 | `BCRYPT_ROUNDS` | Não | `10` | Custo do hash de senha |
-| `SMTP_HOST` | Sim para criar usuário `LOCAL` | nenhum | Servidor SMTP |
+| `SMTP_HOST` | Não | nenhum | Servidor SMTP; sem ele a senha temporária volta na resposta |
 | `SMTP_PORT` | Não | `587` | Porta SMTP |
 | `SMTP_SECURE` | Não | `false` | TLS direto; geralmente `true` na porta 465 |
-| `SMTP_USER` | Sim para criar usuário `LOCAL` | nenhum | Usuário SMTP |
-| `SMTP_PASS` | Sim para criar usuário `LOCAL` | nenhum | Senha SMTP |
-| `SMTP_FROM` | Sim para criar usuário `LOCAL` | nenhum | Remetente da mensagem |
+| `SMTP_USER` | Não | nenhum | Usuário SMTP |
+| `SMTP_PASS` | Não | nenhum | Senha SMTP |
+| `SMTP_FROM` | Não | nenhum | Remetente da mensagem |
 | `FRONTEND_LOGIN_URL` | Não | nenhum | Link de login incluído no e-mail |
 
 Essas variáveis são privadas do servidor. O frontend precisa somente da própria URL pública da API.
@@ -61,7 +61,7 @@ O formato de erro pretendido pelos middlewares é:
 }
 ```
 
-`campos` existe somente quando aplicável. Atualmente o middleware que garante esse formato não está conectado ao app; consulte os bloqueios em `00-LEIA-ME-FRONTEND.md`.
+`campos` existe somente quando aplicável. O middleware que garante esse formato está registrado: nenhuma resposta de erro volta em HTML.
 
 ## Saúde
 
@@ -101,7 +101,7 @@ Pública.
     "deveTrocarSenha": false,
     "ultimoAcessoEm": null,
     "grupos": [{ "id": "uuid", "nome": "Administradores" }],
-    "permissoes": ["usuarios.acessos.view"]
+    "permissoes": ["usuarios.acessosSistema.view"]
   }
 }
 ```
@@ -133,6 +133,9 @@ interface Usuario {
   emailLogin: string;
   funcionarioIxcId: string | null;
   funcionarioNomeSnapshot: string | null;
+  cargo: string;
+  status: "ATIVO" | "INATIVO" | "CONVITE_PENDENTE";
+  escala: "5x2" | "6x1" | "12x36";
   provedorAuth: string;
   ativo: boolean;
   deveTrocarSenha: boolean;
@@ -147,11 +150,11 @@ interface Usuario {
 
 Filtros: `busca?`, `ativo=true|false`, `grupoId=<uuid>`, `pagina`, `porPagina`, `ordenarPor=nomeExibicao|emailLogin|criadoEm|ultimoAcessoEm|ativo`, `ordem=asc|desc`.
 
-Retorna `200` com `RespostaPaginada<Usuario>`. Por falha atual de montagem da rota, este endpoint está público; o contrato pretendido exige `usuarios.acessos.view`.
+Retorna `200` com `RespostaPaginada<Usuario>`. Exige `usuarios.acessosSistema.view`.
 
 ### `POST /usuarios`
 
-Contrato pretendido: privada, permissão `usuarios.acessos.criar`.
+Privada. Permissão `usuarios.acessosSistema.view`.
 
 ```json
 {
@@ -164,17 +167,20 @@ Contrato pretendido: privada, permissão `usuarios.acessos.criar`.
 }
 ```
 
-`provedorAuth` aceita `LOCAL`, `AD` ou `SSO` e assume `LOCAL`. O frontend não envia senha. Para `LOCAL`, o backend gera uma senha temporária aleatória, salva somente seu hash, marca a troca obrigatória e, depois de confirmar o cadastro, envia as credenciais ao `emailLogin` via SMTP. Os dois campos de funcionário devem ser enviados juntos ou ambos omitidos. Resposta `201` com `Usuario`.
+`provedorAuth` aceita `LOCAL`, `AD` ou `SSO` e assume `LOCAL`. `cargo`, `escala` e `status` são opcionais e assumem `Não informado`, `5x2` e `ATIVO`. Criar com `status` diferente de `ATIVO` grava `ativo=false`. O frontend não envia senha. Os dois campos de funcionário devem ser enviados juntos ou ambos omitidos. Resposta `201` com `Usuario`.
 
-Se o usuário for salvo, mas o SMTP falhar, a resposta é `502 EMAIL_NAO_ENVIADO`. O cadastro permanece no banco; não tente criar novamente com o mesmo e-mail. Use o fluxo de redefinição/reenvio.
+Para `LOCAL`, o backend gera uma senha temporária aleatória, salva somente seu hash e marca a troca obrigatória. O que acontece com a senha depende do SMTP:
+
+- **SMTP configurado:** envia por e-mail ao `emailLogin` e a resposta **não** traz a senha. Se o envio falhar, a resposta é `502 EMAIL_NAO_ENVIADO` com o cadastro já gravado — use o fluxo de redefinição, não tente criar de novo com o mesmo e-mail.
+- **SMTP não configurado:** a resposta `201` inclui `senhaTemporaria: string`. Exiba-a uma única vez; ela não fica gravada em lugar nenhum.
 
 ### `GET /usuarios/:id`
 
-Contrato pretendido: privada, permissão `usuarios.acessos.view`. `id` é UUID. Retorna `200` com `Usuario`.
+Privada. Permissão `usuarios.acessosSistema.view`. `id` é UUID. Retorna `200` com `Usuario`.
 
 ### `PATCH /usuarios/:id`
 
-Contrato pretendido: privada, permissão `usuarios.acessos.editar`.
+Privada. Permissão `usuarios.acessosSistema.view`.
 
 ```json
 {
@@ -182,26 +188,28 @@ Contrato pretendido: privada, permissão `usuarios.acessos.editar`.
   "emailLogin": "usuario@empresa.com",
   "funcionarioIxcId": "123",
   "funcionarioNomeSnapshot": "Nome no IXC",
+  "cargo": "Supervisor",
+  "escala": "6x1",
   "grupoIds": ["uuid"],
   "atualizadoEm": "2026-09-02T12:00:00.000Z"
 }
 ```
 
-Todos os campos exibidos são obrigatórios, exceto os dois campos IXC, que devem ser enviados juntos ou omitidos. `atualizadoEm` deve ser copiado do último `GET`; conflito retorna `409 REGISTRO_DESATUALIZADO`. Resposta `200` com `Usuario`.
+Todos os campos exibidos são obrigatórios, exceto `cargo`, `escala` e os dois campos IXC. Omitir `cargo` ou `escala` preserva o valor gravado; os campos IXC devem ser enviados juntos ou omitidos. `atualizadoEm` deve ser copiado do último `GET`; conflito retorna `409 REGISTRO_DESATUALIZADO`. Resposta `200` com `Usuario`.
 
 ### `PATCH /usuarios/:id/status`
 
-Contrato pretendido: privada, permissão `usuarios.acessos.status`.
+Privada. Permissão `usuarios.acessosSistema.view`.
 
 ```json
 { "ativo": false, "motivo": "Opcional, até 500 caracteres" }
 ```
 
-Retorna `200` com `Usuario`. O usuário não pode bloquear a si próprio (`AUTO_BLOQUEIO`). Bloquear revoga todas as sessões do alvo.
+Retorna `200` com `Usuario`. O usuário não pode bloquear a si próprio (`AUTO_BLOQUEIO`). Bloquear revoga todas as sessões do alvo e grava `status=INATIVO` junto de `ativo=false`.
 
 ### `POST /usuarios/:id/redefinir-senha`
 
-Contrato pretendido: privada, permissão `usuarios.acessos.senha`. Não recebe corpo obrigatório. Retorna `200`:
+Privada. Permissão `usuarios.acessosSistema.view`. Não recebe corpo obrigatório. Retorna `200`:
 
 ```json
 { "senhaTemporaria": "valor-exibido-uma-vez" }
@@ -263,7 +271,7 @@ Permissão `usuarios.grupos.inativar`. Aceita corpo opcional `{ "motivo": "..." 
 Permissão `usuarios.permissoes.view`. Retorna:
 
 ```json
-{ "permissaoIds": ["usuarios.acessos.view"] }
+{ "permissaoIds": ["usuarios.acessosSistema.view"] }
 ```
 
 ### `PUT /grupos-permissao/:id/permissoes`
@@ -271,7 +279,7 @@ Permissão `usuarios.permissoes.view`. Retorna:
 Permissão `usuarios.permissoes.editar`. Substitui o conjunto inteiro, de forma atômica:
 
 ```json
-{ "permissaoIds": ["usuarios.acessos.view", "usuarios.grupos.view"] }
+{ "permissaoIds": ["usuarios.acessosSistema.view", "usuarios.grupos.view"] }
 ```
 
 Retorna `200` no mesmo formato. Enviar array vazio remove todas as permissões.
@@ -288,11 +296,11 @@ Privada. Aceita quem possuir `usuarios.permissoes.view` **ou** `usuarios.grupos.
 {
   "modulos": [
     {
-      "modulo": "Usuários",
+      "modulo": "Usuários e Permissões",
       "permissoes": [
         {
-          "id": "usuarios.acessos.view",
-          "nome": "Ver acessos",
+          "id": "usuarios.acessosSistema.view",
+          "nome": "Acessos ao Sistema",
           "descricao": null
         }
       ]

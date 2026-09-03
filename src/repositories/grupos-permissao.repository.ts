@@ -1,4 +1,5 @@
 import { consultar, consultarUm, pool } from "../database/pool.ts";
+import { GRUPO_ADMIN_MASTER } from "../config/master.ts";
 import type { PoolClient } from "pg";
 
 export interface GrupoRegistro {
@@ -32,9 +33,11 @@ const COLUNAS = `
   atualizado_em AS "atualizadoEm"
 `;
 
+// $3 e o nome do grupo master, que nunca aparece na administracao do portal.
 const CONDICOES_LISTAGEM = `
   WHERE ($1::text IS NULL OR g.nome ILIKE '%' || $1::text || '%' OR g.descricao ILIKE '%' || $1::text || '%')
     AND ($2::boolean IS NULL OR g.ativo = $2::boolean)
+    AND lower(g.nome) <> lower($3::text)
 `;
 
 const COLUNAS_ORDENACAO: Record<string, string> = {
@@ -64,13 +67,19 @@ export async function listar(
      FROM grupos_permissao g
      ${CONDICOES_LISTAGEM}
      ORDER BY g.${coluna} ${direcao}
-     LIMIT $3 OFFSET $4`,
-    [filtros.busca, filtros.ativo, filtros.porPagina, deslocamento]
+     LIMIT $4 OFFSET $5`,
+    [
+      filtros.busca,
+      filtros.ativo,
+      GRUPO_ADMIN_MASTER,
+      filtros.porPagina,
+      deslocamento,
+    ]
   );
 
   const totalizador = await consultarUm<{ total: string }>(
     `SELECT COUNT(*)::text AS total FROM grupos_permissao g ${CONDICOES_LISTAGEM}`,
-    [filtros.busca, filtros.ativo]
+    [filtros.busca, filtros.ativo, GRUPO_ADMIN_MASTER]
   );
 
   return { dados, total: Number(totalizador?.total ?? 0) };

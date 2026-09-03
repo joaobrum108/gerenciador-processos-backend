@@ -22,6 +22,9 @@ function usuarioFalso(sobrescritas: Record<string, unknown> = {}) {
     funcionarioNomeSnapshot: null,
     nomeExibicao: "Joao",
     emailLogin: "joao@redfox.com",
+    cargo: "Tecnico",
+    status: "ATIVO",
+    escala: "5x2",
     senhaHash: bcrypt.hashSync("senha-correta", 4),
     provedorAuth: "LOCAL",
     ativo: true,
@@ -37,7 +40,7 @@ function usuarioFalso(sobrescritas: Record<string, unknown> = {}) {
 
 function repositoriosFalsos(usuario: ReturnType<typeof usuarioFalso> | null) {
   const sessoes: Record<string, any> = {};
-  const chamadas = { acessosRegistrados: 0 };
+  const chamadas = { acessosRegistrados: 0, senhasDefinidas: [] as any[] };
 
   return {
     chamadas,
@@ -45,6 +48,10 @@ function repositoriosFalsos(usuario: ReturnType<typeof usuarioFalso> | null) {
     usuariosRepository: {
       buscarPorEmailLogin: async () => usuario,
       buscarPorId: async () => usuario,
+      buscarComSenhaPorId: async () => usuario,
+      definirSenha: async (...args: any[]) => {
+        chamadas.senhasDefinidas.push(args);
+      },
       buscarGrupos: async () => [
         { id: "g1", nome: "Administradores", ativo: true },
         { id: "g2", nome: "Grupo Inativo", ativo: false },
@@ -158,6 +165,34 @@ describe("auth.service login", () => {
 
     assert.equal(erro.status, 401);
     assert.equal(erro.message, "E-mail ou senha invalidos");
+  });
+
+  it("recusa status INATIVO mesmo com ativo=true", async () => {
+    const falsos = repositoriosFalsos(
+      usuarioFalso({ ativo: true, status: "INATIVO" })
+    );
+    const service = criarAuthService({ ...falsos, configuracao: CONFIGURACAO });
+
+    const erro = await capturarErro(() =>
+      service.login("joao@redfox.com", "senha-correta", CONTEXTO)
+    );
+
+    assert.equal(erro.status, 401);
+    assert.equal(erro.codigo, "USUARIO_INATIVO");
+  });
+
+  it("recusa status CONVITE_PENDENTE mesmo com ativo=true", async () => {
+    const falsos = repositoriosFalsos(
+      usuarioFalso({ ativo: true, status: "CONVITE_PENDENTE" })
+    );
+    const service = criarAuthService({ ...falsos, configuracao: CONFIGURACAO });
+
+    const erro = await capturarErro(() =>
+      service.login("joao@redfox.com", "senha-correta", CONTEXTO)
+    );
+
+    assert.equal(erro.status, 401);
+    assert.equal(erro.codigo, "USUARIO_INATIVO");
   });
 
   it("recusa usuario inativo mesmo com a senha correta", async () => {
@@ -368,5 +403,72 @@ describe("auth.service resolverUsuarioDoAccessToken", () => {
 
     assert.equal(erro.status, 401);
     assert.equal(erro.codigo, "USUARIO_INATIVO");
+  });
+});
+
+describe("auth.service trocarSenha", () => {
+  const ID = "11111111-1111-1111-1111-111111111111";
+
+  it("recusa quando a senha atual esta errada", async () => {
+    const falsos = repositoriosFalsos(usuarioFalso());
+    const service = criarAuthService({ ...falsos, configuracao: CONFIGURACAO });
+
+    const erro = await capturarErro(() =>
+      service.trocarSenha(ID, "senha-errada", "NovaSenha@2026")
+    );
+
+    assert.equal(erro.status, 401);
+    assert.equal(erro.codigo, "SENHA_INCORRETA");
+    assert.equal(falsos.chamadas.senhasDefinidas.length, 0);
+  });
+
+  it("recusa repetir a senha atual", async () => {
+    const falsos = repositoriosFalsos(usuarioFalso());
+    const service = criarAuthService({ ...falsos, configuracao: CONFIGURACAO });
+
+    const erro = await capturarErro(() =>
+      service.trocarSenha(ID, "senha-correta", "senha-correta")
+    );
+
+    assert.equal(erro.codigo, "SENHA_REPETIDA");
+    assert.equal(falsos.chamadas.senhasDefinidas.length, 0);
+  });
+
+  it("recusa usuario com provedor AD", async () => {
+    const falsos = repositoriosFalsos(
+      usuarioFalso({ provedorAuth: "AD", senhaHash: null })
+    );
+    const service = criarAuthService({ ...falsos, configuracao: CONFIGURACAO });
+
+    const erro = await capturarErro(() =>
+      service.trocarSenha(ID, "senha-correta", "NovaSenha@2026")
+    );
+
+    assert.equal(erro.codigo, "PROVEDOR_SEM_SENHA_LOCAL");
+  });
+
+  it("recusa usuario inativo", async () => {
+    const falsos = repositoriosFalsos(usuarioFalso({ ativo: false }));
+    const service = criarAuthService({ ...falsos, configuracao: CONFIGURACAO });
+
+    const erro = await capturarErro(() =>
+      service.trocarSenha(ID, "senha-correta", "NovaSenha@2026")
+    );
+
+    assert.equal(erro.codigo, "USUARIO_INATIVO");
+  });
+
+  it("grava a senha nova, tira a troca obrigatoria e derruba as sessoes", async () => {
+    const falsos = repositoriosFalsos(usuarioFalso({ deveTrocarSenha: true }));
+    const service = criarAuthService({ ...falsos, configuracao: CONFIGURACAO });
+
+    await service.trocarSenha(ID, "senha-correta", "NovaSenha@2026");
+
+    assert.equal(falsos.chamadas.senhasDefinidas.length, 1);
+    const [id, hash, deveTrocar] = falsos.chamadas.senhasDefinidas[0];
+    assert.equal(id, ID);
+    assert.equal(deveTrocar, false);
+    assert.notEqual(hash, "NovaSenha@2026");
+    assert.ok(await bcrypt.compare("NovaSenha@2026", hash));
   });
 });

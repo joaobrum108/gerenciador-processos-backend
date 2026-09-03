@@ -7,7 +7,7 @@ Este projeto **não cria tabelas**. O schema do banco pertence ao projeto `api-d
 ## Requisitos
 
 - Node.js 20 ou superior
-- PostgreSQL rodando com o banco `redfox` criado e as tabelas já aplicadas
+- PostgreSQL rodando com o banco `redfox_processos` criado e as tabelas já aplicadas pelo projeto `api-db-redfox-process`
 
 ## Instalação
 
@@ -23,11 +23,22 @@ Copie o `.env.example` para `.env` e ajuste:
 cp .env.example .env
 ```
 
+O `JWT_SECRET` não tem valor padrão e não pode ficar vazio. Gere um:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+```
+
+A API valida `DATABASE_URL`, `JWT_SECRET` e `PORT` no boot e **se recusa a subir**
+se algo estiver faltando ou malformado, listando o que está errado. É de
+propósito: um `JWT_SECRET` vazio, antes, só aparecia como erro 500 na primeira
+tentativa de login.
+
 | Variável | Exemplo | Para que serve |
 |---|---|---|
 | `PORT` | `3200` | porta do servidor |
-| `DATABASE_URL` | `postgresql://postgres:postgres@localhost:5432/redfox` | conexão com o Postgres |
-| `JWT_SECRET` | qualquer texto longo | assina o access token |
+| `DATABASE_URL` | `postgresql://postgres:senha@localhost:5432/redfox_processos` | conexão com o Postgres |
+| `JWT_SECRET` | **obrigatória**, mínimo 32 caracteres | assina o access token |
 | `JWT_EXPIRACAO` | `15m` | validade do access token |
 | `REFRESH_EXPIRACAO_DIAS` | `7` | validade do refresh token |
 | `BCRYPT_ROUNDS` | `10` | custo do hash de senha |
@@ -45,7 +56,7 @@ cp .env.example .env
 npm run dev
 ```
 
-Servidor em `http://localhost:3200`. Teste rápido:
+Servidor em `http://localhost:3200`. Todas as rotas ficam sob `/api/v1`. Teste rápido:
 
 ```bash
 curl http://localhost:3200/api/v1/saude
@@ -61,7 +72,7 @@ Start-Service postgresql-x64-18
 
 ```bash
 npm start        # roda sem watch
-npm test         # testes dos services (não precisa de banco)
+npm test         # testes dos services (não conecta no banco, mas exige o .env)
 npm run typecheck
 ```
 
@@ -69,21 +80,55 @@ npm run typecheck
 
 Todas sob o prefixo `/api/v1`.
 
-| Método | Rota | Token |
+| Método | Rota | Token | Permissão |
+|---|---|---|---|
+| GET | `/saude` | não | — |
+| POST | `/auth/login` | não | — |
+| POST | `/auth/refresh` | não | — |
+| POST | `/auth/logout` | não | — |
+| GET | `/auth/me` | sim | — |
+| GET POST | `/usuarios` | sim | `usuarios.acessosSistema.view` |
+| GET PATCH | `/usuarios/:id` | sim | `usuarios.acessosSistema.view` |
+| PATCH | `/usuarios/:id/status` | sim | `usuarios.acessosSistema.view` |
+| POST | `/usuarios/:id/redefinir-senha` | sim | `usuarios.acessosSistema.view` |
+| GET | `/grupos-permissao` | sim | `usuarios.grupos.view` |
+| POST | `/grupos-permissao` | sim | `usuarios.grupos.criar` |
+| GET | `/grupos-permissao/:id` | sim | `usuarios.grupos.view` |
+| PATCH | `/grupos-permissao/:id` | sim | `usuarios.grupos.editar` |
+| DELETE | `/grupos-permissao/:id` | sim | `usuarios.grupos.inativar` |
+| GET | `/grupos-permissao/:id/permissoes` | sim | `usuarios.permissoes.view` |
+| PUT | `/grupos-permissao/:id/permissoes` | sim | `usuarios.permissoes.editar` |
+| GET | `/permissoes` | sim | `usuarios.permissoes.view` ou `usuarios.grupos.view` |
+
+Toda a administração de acessos usa a mesma permissão: quem enxerga a tela de
+acessos ao sistema opera nela por inteiro.
+
+## Usuários
+
+Além de `nomeExibicao` e `emailLogin`, o `POST` e o `PATCH` aceitam:
+
+| Campo | Valores | Padrão na criação |
 |---|---|---|
-| GET | `/saude` | não |
-| POST | `/auth/login` | não |
-| POST | `/auth/refresh` | não |
-| POST | `/auth/logout` | não |
-| GET | `/auth/me` | sim |
-| GET POST | `/usuarios` | sim |
-| GET PATCH | `/usuarios/:id` | sim |
-| PATCH | `/usuarios/:id/status` | sim |
-| POST | `/usuarios/:id/redefinir-senha` | sim |
-| GET POST | `/grupos-permissao` | sim |
-| GET PATCH DELETE | `/grupos-permissao/:id` | sim |
-| GET PUT | `/grupos-permissao/:id/permissoes` | sim |
-| GET | `/permissoes` | sim |
+| `cargo` | texto até 100 caracteres | `Não informado` |
+| `escala` | `5x2`, `6x1`, `12x36` | `5x2` |
+| `status` | `ATIVO`, `INATIVO`, `CONVITE_PENDENTE` (só no `POST`) | `ATIVO` |
+
+`status` e `ativo` são a mesma noção de estado e são gravados juntos: bloquear
+pelo `PATCH /usuarios/:id/status` grava `ativo=false` e `status=INATIVO`. Login
+só é aceito com os dois concordando em `ATIVO`.
+
+Omitir `cargo` ou `escala` no `PATCH` preserva o que já estava gravado.
+
+### Senha do usuário novo
+
+Usuários `LOCAL` recebem uma senha temporária aleatória e `deveTrocarSenha=true`.
+O destino dela depende do SMTP:
+
+- **SMTP configurado** (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` e `SMTP_FROM`): a
+  senha vai por e-mail e **não** aparece na resposta. Falha no envio devolve
+  `502 EMAIL_NAO_ENVIADO` com o usuário já criado.
+- **SMTP não configurado**: a resposta `201` inclui `senhaTemporaria`. É a única
+  forma de a senha chegar a alguém — ela não fica gravada em lugar nenhum.
 
 ## Autenticação
 

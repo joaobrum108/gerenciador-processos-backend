@@ -68,6 +68,38 @@ export async function sair(
   }
 }
 
+const esquemaTrocaSenha = z.object({
+  senhaAtual: z
+    .string({ error: "Informe a senha atual" })
+    .min(1, "Informe a senha atual"),
+  senhaNova: z
+    .string({ error: "Informe a nova senha" })
+    .min(8, "A nova senha deve ter ao menos 8 caracteres")
+    // Limite do bcrypt: o excedente e descartado em silencio.
+    .refine(
+      (valor) => Buffer.byteLength(valor, "utf8") <= 72,
+      "A nova senha passa de 72 bytes"
+    ),
+});
+
+export async function trocarSenha(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const { senhaAtual, senhaNova } = esquemaTrocaSenha.parse(req.body);
+    await authService.trocarSenha(
+      req.usuario?.id ?? "",
+      senhaAtual,
+      senhaNova
+    );
+    res.status(204).send();
+  } catch (erro) {
+    next(erro);
+  }
+}
+
 export async function eu(
   req: Request,
   res: Response,

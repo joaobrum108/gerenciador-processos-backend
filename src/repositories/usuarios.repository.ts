@@ -1,5 +1,14 @@
 import { consultar, consultarUm, pool } from "../database/pool.ts";
+import { GRUPO_ADMIN_MASTER } from "../config/master.ts";
 import type { PoolClient } from "pg";
+
+// Espelham os enums status_usuario e escala_trabalho criados pela migration
+// 20260902160000_usuarios_colaboradores no api-db-redfox-process.
+export const STATUS_USUARIO = ["ATIVO", "INATIVO", "CONVITE_PENDENTE"] as const;
+export const ESCALAS_TRABALHO = ["5x2", "6x1", "12x36"] as const;
+
+export type StatusUsuario = (typeof STATUS_USUARIO)[number];
+export type EscalaTrabalho = (typeof ESCALAS_TRABALHO)[number];
 
 export interface UsuarioRegistro {
   id: string;
@@ -7,6 +16,9 @@ export interface UsuarioRegistro {
   funcionarioNomeSnapshot: string | null;
   nomeExibicao: string;
   emailLogin: string;
+  cargo: string;
+  status: StatusUsuario;
+  escala: EscalaTrabalho;
   provedorAuth: string;
   ativo: boolean;
   deveTrocarSenha: boolean;
@@ -40,6 +52,9 @@ export interface FiltrosUsuarios {
 export interface DadosCriacaoUsuario {
   nomeExibicao: string;
   emailLogin: string;
+  cargo: string;
+  escala: EscalaTrabalho;
+  status: StatusUsuario;
   senhaHash: string | null;
   provedorAuth: string;
   funcionarioIxcId: string | null;
@@ -51,6 +66,8 @@ export interface DadosCriacaoUsuario {
 export interface DadosAtualizacaoUsuario {
   nomeExibicao: string;
   emailLogin: string;
+  cargo: string;
+  escala: EscalaTrabalho;
   funcionarioIxcId: string | null;
   funcionarioNomeSnapshot: string | null;
 }
@@ -61,6 +78,9 @@ const COLUNAS = `
   funcionario_nome_snapshot AS "funcionarioNomeSnapshot",
   nome_exibicao AS "nomeExibicao",
   email_login AS "emailLogin",
+  cargo,
+  status,
+  escala,
   provedor_auth AS "provedorAuth",
   ativo,
   deve_trocar_senha AS "deveTrocarSenha",
@@ -71,12 +91,17 @@ const COLUNAS = `
   atualizado_em AS "atualizadoEm"
 `;
 
+// $4 e o nome do grupo master: quem pertence a ele nao aparece na administracao.
 const CONDICOES_LISTAGEM = `
   WHERE ($1::text IS NULL OR u.nome_exibicao ILIKE '%' || $1::text || '%' OR u.email_login ILIKE '%' || $1::text || '%')
     AND ($2::boolean IS NULL OR u.ativo = $2::boolean)
     AND ($3::uuid IS NULL OR EXISTS (
           SELECT 1 FROM usuario_grupos ug
            WHERE ug.usuario_id = u.id AND ug.grupo_id = $3::uuid))
+    AND NOT EXISTS (
+          SELECT 1 FROM usuario_grupos ugm
+            JOIN grupos_permissao gm ON gm.id = ugm.grupo_id
+           WHERE ugm.usuario_id = u.id AND lower(gm.nome) = lower($4::text))
 `;
 
 const COLUNAS_ORDENACAO: Record<string, string> = {
@@ -133,11 +158,13 @@ export async function funcionarioJaVinculado(
   funcionarioIxcId: string,
   ignorarUsuarioId: string | null = null
 ): Promise<boolean> {
+  // Sem filtro por `ativo`: o indice unico do banco
+  // (usuarios_funcionario_ixc_id_key) e incondicional. Filtrar aqui deixaria a
+  // aplicacao mais frouxa que o banco e transformaria um 409 legitimo em 500.
   const linha = await consultarUm<{ existe: boolean }>(
     `SELECT true AS existe
        FROM usuarios
       WHERE funcionario_ixc_id = $1
-        AND ativo = true
         AND ($2::uuid IS NULL OR id <> $2::uuid)
       LIMIT 1`,
     [funcionarioIxcId, ignorarUsuarioId]
@@ -159,6 +186,9 @@ export async function listar(
        u.funcionario_nome_snapshot AS "funcionarioNomeSnapshot",
        u.nome_exibicao AS "nomeExibicao",
        u.email_login AS "emailLogin",
+       u.cargo,
+       u.status,
+       u.escala,
        u.provedor_auth AS "provedorAuth",
        u.ativo,
        u.deve_trocar_senha AS "deveTrocarSenha",
@@ -170,11 +200,12 @@ export async function listar(
      FROM usuarios u
      ${CONDICOES_LISTAGEM}
      ORDER BY u.${coluna} ${direcao}
-     LIMIT $4 OFFSET $5`,
+     LIMIT $5 OFFSET $6`,
     [
       filtros.busca,
       filtros.ativo,
       filtros.grupoId,
+      GRUPO_ADMIN_MASTER,
       filtros.porPagina,
       deslocamento,
     ]
@@ -182,7 +213,7 @@ export async function listar(
 
   const totalizador = await consultarUm<{ total: string }>(
     `SELECT COUNT(*)::text AS total FROM usuarios u ${CONDICOES_LISTAGEM}`,
-    [filtros.busca, filtros.ativo, filtros.grupoId]
+    [filtros.busca, filtros.ativo, filtros.grupoId, GRUPO_ADMIN_MASTER]
   );
 
   return { dados, total: Number(totalizador?.total ?? 0) };
@@ -249,11 +280,13 @@ export async function criar(
   const { rows } = await executor.query<UsuarioRegistro>(
     `INSERT INTO usuarios (
        id, funcionario_ixc_id, funcionario_nome_snapshot, nome_exibicao,
-       email_login, senha_hash, provedor_auth, ativo, deve_trocar_senha,
-       senha_alterada_em, criado_por_usuario_id, criado_em, atualizado_em
+       email_login, cargo, escala, status, senha_hash, provedor_auth, ativo,
+       deve_trocar_senha, senha_alterada_em, criado_por_usuario_id,
+       criado_em, atualizado_em
      ) VALUES (
-       gen_random_uuid(), $1, $2, $3, $4, $5, $6, true, $7,
-       CASE WHEN $5::varchar IS NULL THEN NULL ELSE now() END, $8, now(), now()
+       gen_random_uuid(), $1, $2, $3, $4, $5, $6::escala_trabalho,
+       $7::status_usuario, $8, $9, $7::status_usuario = 'ATIVO', $10,
+       CASE WHEN $8::varchar IS NULL THEN NULL ELSE now() END, $11, now(), now()
      )
      RETURNING ${COLUNAS}`,
     [
@@ -261,6 +294,9 @@ export async function criar(
       dados.funcionarioNomeSnapshot,
       dados.nomeExibicao,
       dados.emailLogin,
+      dados.cargo,
+      dados.escala,
+      dados.status,
       dados.senhaHash,
       dados.provedorAuth,
       dados.deveTrocarSenha,
@@ -286,16 +322,20 @@ export async function atualizar(
     `UPDATE usuarios
         SET nome_exibicao = $2,
             email_login = $3,
-            funcionario_ixc_id = $4,
-            funcionario_nome_snapshot = $5,
+            cargo = $4,
+            escala = $5::escala_trabalho,
+            funcionario_ixc_id = $6,
+            funcionario_nome_snapshot = $7,
             atualizado_em = now()
       WHERE id = $1
-        AND atualizado_em = $6
+        AND atualizado_em = $8
       RETURNING ${COLUNAS}`,
     [
       id,
       dados.nomeExibicao,
       dados.emailLogin,
+      dados.cargo,
+      dados.escala,
       dados.funcionarioIxcId,
       dados.funcionarioNomeSnapshot,
       atualizadoEmAnterior,
@@ -311,8 +351,12 @@ export async function alterarAtivo(
 ): Promise<UsuarioRegistro | null> {
   const executor = cliente ?? pool;
   const { rows } = await executor.query<UsuarioRegistro>(
+    // `ativo` e `status` sao duas leituras do mesmo estado. Gravar as duas juntas
+    // evita que divirjam, o que faria uma delas mentir para quem consultasse.
     `UPDATE usuarios
-        SET ativo = $2, atualizado_em = now()
+        SET ativo = $2,
+            status = (CASE WHEN $2 THEN 'ATIVO' ELSE 'INATIVO' END)::status_usuario,
+            atualizado_em = now()
       WHERE id = $1
       RETURNING ${COLUNAS}`,
     [id, ativo]

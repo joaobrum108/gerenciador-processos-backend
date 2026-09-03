@@ -20,19 +20,23 @@ O backend implementa somente:
 
 Não estão implementados ainda os módulos de auditoria, IXC, agendamentos, checklists, vales, devoluções, frota, ponto, conta e suporte. Eles aparecem no documento `03` como planejamento.
 
-## Atenção: bloqueios encontrados no código atual
+## Bloqueios: resolvidos em 03/09/2026
 
-Estes itens refletem o servidor executado por `npm run dev`, mesmo que o README antigo indique outra coisa:
+Os quatro itens que impediam a integração foram corrigidos e verificados contra o servidor rodando. Ficam registrados aqui porque versões anteriores desta pasta os descreviam como pendentes:
 
-| Item              | Situação atual                                                    | Efeito no frontend                                                                                     |
-| ----------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Prefixo `/api/v1` | Não está montado em `src/router.ts`                               | A URL real atual é `http://localhost:3200/auth/login`, e não `/api/v1/auth/login`                      |
-| CORS              | Não está configurado                                              | Um frontend em outra origem/porta será bloqueado pelo navegador, salvo uso de proxy de desenvolvimento |
-| Erros e 404 JSON  | Os middlewares existem, mas não são registrados em `src/index.ts` | Erros podem chegar no formato padrão do Express, inclusive HTML, em vez do contrato JSON               |
+| Item              | Situação                                                                                              |
+| ----------------- | ------------------------------------------------------------------------------------------------------ |
+| Prefixo `/api/v1` | **Montado.** Use `VITE_API_URL=http://localhost:3200/api/v1`                                            |
+| CORS              | **Configurado** (`app.use(cors())`). O proxy do Vite continua útil, mas deixou de ser obrigatório      |
+| Erros e 404 JSON  | **Registrados.** Todo erro sai no contrato `{ mensagem, codigo, campos? }`; nada mais volta em HTML     |
+| Porta             | **`PORT` tem fallback `3200`**, e a API valida `DATABASE_URL`, `JWT_SECRET` e `PORT` no boot            |
 
-| Porta | `PORT` não possui fallback no código | O `.env` do backend deve definir `PORT` |
+Duas correções afetam diretamente as telas de usuários e grupos:
 
-O frontend pode ser preparado com o contrato abaixo, mas a integração completa depende da correção desses itens no backend. A recomendação é padronizar o backend em `/api/v1` e configurar o frontend com `VITE_API_URL=http://localhost:3200/api/v1` depois dessa correção.
+| Item                              | Situação                                                                                                              |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Editar usuário ou grupo           | **Funciona.** O `PATCH` respondia `409 REGISTRO_DESATUALIZADO` sempre, por precisão de microssegundos no `atualizadoEm`. Hoje o `409` só aparece em conflito real |
+| Rotas de usuários sem autorização | **Fechadas.** Cinco rotas aceitavam qualquer usuário autenticado; todas exigem `usuarios.acessosSistema.view`           |
 
 ## Fonte da verdade
 
