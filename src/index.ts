@@ -4,6 +4,7 @@ import { lerEnv } from "./config/env.ts";
 import router from "./router.ts";
 import { rotaNaoEncontrada, tratarErro } from "./middlewares/tratar-erro.ts";
 import { pool } from "./database/pool.ts";
+import { encerrarPoolIxc } from "./database/pool.ixc.ts";
 
 const env = lerEnv();
 
@@ -50,7 +51,7 @@ async function encerrar(sinal: string): Promise<void> {
 
   try {
     servidor.close();
-    await pool.end();
+    await Promise.all([pool.end(), encerrarPoolIxc()]);
   } catch (erro) {
     console.error("Falha ao encerrar recursos:", erro);
   }

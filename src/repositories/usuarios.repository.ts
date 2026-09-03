@@ -2,8 +2,6 @@ import { consultar, consultarUm, pool } from "../database/pool.ts";
 import { GRUPO_ADMIN_MASTER } from "../config/master.ts";
 import type { PoolClient } from "pg";
 
-// Espelham os enums status_usuario e escala_trabalho criados pela migration
-// 20260902160000_usuarios_colaboradores no api-db-redfox-process.
 export const STATUS_USUARIO = ["ATIVO", "INATIVO", "CONVITE_PENDENTE"] as const;
 export const ESCALAS_TRABALHO = ["5x2", "6x1", "12x36"] as const;
 
@@ -91,7 +89,6 @@ const COLUNAS = `
   atualizado_em AS "atualizadoEm"
 `;
 
-// $4 e o nome do grupo master: quem pertence a ele nao aparece na administracao.
 const CONDICOES_LISTAGEM = `
   WHERE ($1::text IS NULL OR u.nome_exibicao ILIKE '%' || $1::text || '%' OR u.email_login ILIKE '%' || $1::text || '%')
     AND ($2::boolean IS NULL OR u.ativo = $2::boolean)
@@ -115,33 +112,61 @@ const COLUNAS_ORDENACAO: Record<string, string> = {
 export const ORDENACOES_PERMITIDAS = Object.keys(COLUNAS_ORDENACAO);
 
 export async function buscarPorEmailLogin(
-  emailLogin: string
+  emailLogin: string,
 ): Promise<UsuarioComSenha | null> {
   return consultarUm<UsuarioComSenha>(
     `SELECT ${COLUNAS}, senha_hash AS "senhaHash" FROM usuarios WHERE email_login = $1`,
-    [emailLogin]
+    [emailLogin],
   );
 }
 
 export async function buscarPorId(id: string): Promise<UsuarioRegistro | null> {
   return consultarUm<UsuarioRegistro>(
     `SELECT ${COLUNAS} FROM usuarios WHERE id = $1`,
-    [id]
+    [id],
   );
 }
 
+export async function buscarNomesPorFuncionariosIxcIds(
+  funcionarioIxcIds: string[],
+): Promise<Map<string, string>> {
+  const nomes = new Map<string, string>();
+
+  if (funcionarioIxcIds.length === 0) {
+    return nomes;
+  }
+
+  const usuarios = await consultar<{
+    funcionarioIxcId: string;
+    nomeExibicao: string;
+  }>(
+    `SELECT
+       funcionario_ixc_id AS "funcionarioIxcId",
+       nome_exibicao AS "nomeExibicao"
+     FROM usuarios
+     WHERE funcionario_ixc_id = ANY($1::text[])`,
+    [funcionarioIxcIds],
+  );
+
+  for (const usuario of usuarios) {
+    nomes.set(usuario.funcionarioIxcId, usuario.nomeExibicao);
+  }
+
+  return nomes;
+}
+
 export async function buscarComSenhaPorId(
-  id: string
+  id: string,
 ): Promise<UsuarioComSenha | null> {
   return consultarUm<UsuarioComSenha>(
     `SELECT ${COLUNAS}, senha_hash AS "senhaHash" FROM usuarios WHERE id = $1`,
-    [id]
+    [id],
   );
 }
 
 export async function emailJaUsado(
   emailLogin: string,
-  ignorarUsuarioId: string | null = null
+  ignorarUsuarioId: string | null = null,
 ): Promise<boolean> {
   const linha = await consultarUm<{ existe: boolean }>(
     `SELECT true AS existe
@@ -149,14 +174,14 @@ export async function emailJaUsado(
       WHERE email_login = $1
         AND ($2::uuid IS NULL OR id <> $2::uuid)
       LIMIT 1`,
-    [emailLogin, ignorarUsuarioId]
+    [emailLogin, ignorarUsuarioId],
   );
   return linha !== null;
 }
 
 export async function funcionarioJaVinculado(
   funcionarioIxcId: string,
-  ignorarUsuarioId: string | null = null
+  ignorarUsuarioId: string | null = null,
 ): Promise<boolean> {
   // Sem filtro por `ativo`: o indice unico do banco
   // (usuarios_funcionario_ixc_id_key) e incondicional. Filtrar aqui deixaria a
@@ -167,13 +192,13 @@ export async function funcionarioJaVinculado(
       WHERE funcionario_ixc_id = $1
         AND ($2::uuid IS NULL OR id <> $2::uuid)
       LIMIT 1`,
-    [funcionarioIxcId, ignorarUsuarioId]
+    [funcionarioIxcId, ignorarUsuarioId],
   );
   return linha !== null;
 }
 
 export async function listar(
-  filtros: FiltrosUsuarios
+  filtros: FiltrosUsuarios,
 ): Promise<{ dados: UsuarioRegistro[]; total: number }> {
   const coluna = COLUNAS_ORDENACAO[filtros.ordenarPor] ?? "nome_exibicao";
   const direcao = filtros.ordem === "asc" ? "ASC" : "DESC";
@@ -208,19 +233,19 @@ export async function listar(
       GRUPO_ADMIN_MASTER,
       filtros.porPagina,
       deslocamento,
-    ]
+    ],
   );
 
   const totalizador = await consultarUm<{ total: string }>(
     `SELECT COUNT(*)::text AS total FROM usuarios u ${CONDICOES_LISTAGEM}`,
-    [filtros.busca, filtros.ativo, filtros.grupoId, GRUPO_ADMIN_MASTER]
+    [filtros.busca, filtros.ativo, filtros.grupoId, GRUPO_ADMIN_MASTER],
   );
 
   return { dados, total: Number(totalizador?.total ?? 0) };
 }
 
 export async function buscarGrupos(
-  usuarioId: string
+  usuarioId: string,
 ): Promise<GrupoDoUsuario[]> {
   return consultar<GrupoDoUsuario>(
     `SELECT g.id, g.nome, g.ativo
@@ -228,12 +253,12 @@ export async function buscarGrupos(
        JOIN grupos_permissao g ON g.id = ug.grupo_id
       WHERE ug.usuario_id = $1
       ORDER BY g.nome ASC`,
-    [usuarioId]
+    [usuarioId],
   );
 }
 
 export async function buscarGruposDeVarios(
-  usuarioIds: string[]
+  usuarioIds: string[],
 ): Promise<Map<string, GrupoDoUsuario[]>> {
   const mapa = new Map<string, GrupoDoUsuario[]>();
 
@@ -247,7 +272,7 @@ export async function buscarGruposDeVarios(
        JOIN grupos_permissao g ON g.id = ug.grupo_id
       WHERE ug.usuario_id = ANY($1::uuid[])
       ORDER BY g.nome ASC`,
-    [usuarioIds]
+    [usuarioIds],
   );
 
   for (const linha of linhas) {
@@ -267,14 +292,14 @@ export async function buscarPermissoes(usuarioId: string): Promise<string[]> {
        JOIN grupo_permissoes gp ON gp.grupo_id = g.id
       WHERE ug.usuario_id = $1
       ORDER BY gp.permissao_id ASC`,
-    [usuarioId]
+    [usuarioId],
   );
   return linhas.map((linha) => linha.permissaoId);
 }
 
 export async function criar(
   dados: DadosCriacaoUsuario,
-  cliente: PoolClient | null = null
+  cliente: PoolClient | null = null,
 ): Promise<UsuarioRegistro> {
   const executor = cliente ?? pool;
   const { rows } = await executor.query<UsuarioRegistro>(
@@ -301,7 +326,7 @@ export async function criar(
       dados.provedorAuth,
       dados.deveTrocarSenha,
       dados.criadoPorUsuarioId,
-    ]
+    ],
   );
 
   const criado = rows[0];
@@ -315,7 +340,7 @@ export async function atualizar(
   id: string,
   dados: DadosAtualizacaoUsuario,
   atualizadoEmAnterior: Date,
-  cliente: PoolClient | null = null
+  cliente: PoolClient | null = null,
 ): Promise<UsuarioRegistro | null> {
   const executor = cliente ?? pool;
   const { rows } = await executor.query<UsuarioRegistro>(
@@ -339,7 +364,7 @@ export async function atualizar(
       dados.funcionarioIxcId,
       dados.funcionarioNomeSnapshot,
       atualizadoEmAnterior,
-    ]
+    ],
   );
   return rows[0] ?? null;
 }
@@ -347,7 +372,7 @@ export async function atualizar(
 export async function alterarAtivo(
   id: string,
   ativo: boolean,
-  cliente: PoolClient | null = null
+  cliente: PoolClient | null = null,
 ): Promise<UsuarioRegistro | null> {
   const executor = cliente ?? pool;
   const { rows } = await executor.query<UsuarioRegistro>(
@@ -359,7 +384,7 @@ export async function alterarAtivo(
             atualizado_em = now()
       WHERE id = $1
       RETURNING ${COLUNAS}`,
-    [id, ativo]
+    [id, ativo],
   );
   return rows[0] ?? null;
 }
@@ -368,7 +393,7 @@ export async function definirSenha(
   id: string,
   senhaHash: string,
   deveTrocarSenha: boolean,
-  cliente: PoolClient | null = null
+  cliente: PoolClient | null = null,
 ): Promise<void> {
   const executor = cliente ?? pool;
   await executor.query(
@@ -378,20 +403,21 @@ export async function definirSenha(
             senha_alterada_em = now(),
             atualizado_em = now()
       WHERE id = $1`,
-    [id, senhaHash, deveTrocarSenha]
+    [id, senhaHash, deveTrocarSenha],
   );
 }
 
 export async function registrarAcesso(id: string): Promise<void> {
-  await pool.query(`UPDATE usuarios SET ultimo_acesso_em = now() WHERE id = $1`, [
-    id,
-  ]);
+  await pool.query(
+    `UPDATE usuarios SET ultimo_acesso_em = now() WHERE id = $1`,
+    [id],
+  );
 }
 
 export async function substituirGrupos(
   usuarioId: string,
   grupoIds: string[],
-  cliente: PoolClient
+  cliente: PoolClient,
 ): Promise<void> {
   await cliente.query(`DELETE FROM usuario_grupos WHERE usuario_id = $1`, [
     usuarioId,
@@ -404,6 +430,6 @@ export async function substituirGrupos(
   await cliente.query(
     `INSERT INTO usuario_grupos (usuario_id, grupo_id, criado_em)
      SELECT $1, grupo_id, now() FROM UNNEST($2::uuid[]) AS grupo_id`,
-    [usuarioId, grupoIds]
+    [usuarioId, grupoIds],
   );
 }

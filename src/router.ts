@@ -3,6 +3,7 @@ import authRoutes from "./routes/auth.routes.ts";
 import usuariosRoutes from "./routes/usuarios.routes.ts";
 import gruposPermissaoRoutes from "./routes/grupos-permissao.routes.ts";
 import permissoesRoutes from "./routes/permissoes.routes.ts";
+import routesIxc from "./routes/rotas.ixc.ts";
 
 const router = Router();
 
@@ -14,5 +15,6 @@ router.use("/auth", authRoutes);
 router.use("/usuarios", usuariosRoutes);
 router.use("/grupos-permissao", gruposPermissaoRoutes);
 router.use("/permissoes", permissoesRoutes);
+router.use("/integracoes/ixc", routesIxc);
 
 export default router;
