@@ -20,9 +20,8 @@ export interface DivergenciaIxc {
 }
 
 export interface PeriodoDivergencias {
-  /** `YYYY-MM-DD`, inclusive. */
   dataInicio: string;
-  /** `YYYY-MM-DD`, inclusive (a consulta cobre o dia inteiro). */
+
   dataFim: string;
 }
 
@@ -65,11 +64,6 @@ export interface OperadorIxc {
   nome: string;
 }
 
-/**
- * Resolve o nome dos operadores (`id_operador`) na tabela `usuarios` do IXC.
- * Recebe os ids em lote e devolve um mapa, para nao consultar o banco uma vez
- * por divergencia.
- */
 export async function buscarNomesOperadores(
   ids: number[],
 ): Promise<Map<number, string>> {
@@ -77,8 +71,6 @@ export async function buscarNomesOperadores(
     return new Map();
   }
 
-  // Um marcador por id: a quantidade vem do tamanho do array, nunca de entrada
-  // do usuario, e os valores seguem parametrizados pelo driver.
   const marcadores = ids.map(() => "?").join(", ");
 
   const operadores = await consultarIxc<OperadorIxc>(

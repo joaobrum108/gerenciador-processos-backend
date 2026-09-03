@@ -16,13 +16,9 @@ export function criarDivergenciasService(
   const repositorioDivergencias =
     dependencias.repositorioDivergencias ?? repositorioDivergenciasPadrao;
 
-  async function listar(
-    periodo: PeriodoDivergencias,
-  ): Promise<Divergencia[]> {
+  async function listar(periodo: PeriodoDivergencias): Promise<Divergencia[]> {
     const divergencias = await repositorioDivergencias.listar(periodo);
 
-    // Ids distintos: varias divergencias costumam ter o mesmo auditor, e repetir
-    // o id so aumentaria a lista do IN sem mudar o resultado.
     const idsOperadores = [
       ...new Set(
         divergencias
@@ -34,8 +30,6 @@ export function criarDivergenciasService(
     const nomesPorId =
       await repositorioDivergencias.buscarNomesOperadores(idsOperadores);
 
-    // Operador sem correspondencia em `usuarios` fica null: a tela decide como
-    // exibir, o service nao inventa texto de apresentacao.
     return divergencias.map((divergencia) => ({
       ...divergencia,
       auditorNome:
