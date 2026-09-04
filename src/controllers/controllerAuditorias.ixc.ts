@@ -25,3 +25,30 @@ export async function listar(
     next(erro);
   }
 }
+
+export async function contar(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const periodo = esquemaPeriodo.parse(req.query);
+    const total = await auditoriasService.contar(periodo);
+    res.status(200).json({ total });
+  } catch (erro) {
+    next(erro);
+  }
+}
+
+export async function resumir(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const periodo = esquemaPeriodo.parse(req.query);
+    res.status(200).json(await auditoriasService.resumir(periodo));
+  } catch (erro) {
+    next(erro);
+  }
+}

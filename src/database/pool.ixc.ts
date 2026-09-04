@@ -54,7 +54,7 @@ function obterPool(): Pool {
     password: process.env.DB_PASS_IXC ?? "",
     database: process.env.DB_NAME_IXC ?? "",
     waitForConnections: true,
-    connectionLimit: 5,
+    connectionLimit: 10,
     queueLimit: 20,
     enableKeepAlive: true,
     keepAliveInitialDelay: 0,
