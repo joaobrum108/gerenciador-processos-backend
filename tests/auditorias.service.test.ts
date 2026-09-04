@@ -58,6 +58,8 @@ function montarService(auditorias: AuditoriaIxc[]) {
         };
       },
     } as never,
+    buscarNomes: async (ids: number[]) =>
+      new Map(ids.map((id) => [id, `OPERADOR ${id}`])),
   });
 
   return { service, periodosRecebidos };
@@ -90,7 +92,7 @@ describe("auditorias.service", () => {
       auditoriaFalsa({ tarefa: "DIVERGENCIA DE O.S | CONFERENCIA - TROCA EQUIPAMENTO" }),
     ]);
 
-    const dados = await service.listar(PERIODO);
+    const dados = await service.listar(PERIODO, { incluirDivergentes: true });
 
     assert.deepEqual(
       dados.map((auditoria) => auditoria.resultado),
@@ -105,7 +107,7 @@ describe("auditorias.service", () => {
       }),
     ]);
 
-    const [auditoria] = await service.listar(PERIODO);
+    const [auditoria] = await service.listar(PERIODO, { incluirDivergentes: true });
 
     assert.equal(auditoria?.resultado, "COM_DIVERGENCIA");
   });
@@ -129,7 +131,7 @@ describe("auditorias.service", () => {
       }),
     ]);
 
-    const [auditoria] = await service.listar(PERIODO);
+    const [auditoria] = await service.listar(PERIODO, { incluirDivergentes: true });
 
     assert.equal(auditoria?.resultado, "COM_DIVERGENCIA");
   });
@@ -143,7 +145,7 @@ describe("auditorias.service", () => {
       }),
     ]);
 
-    const [auditoria] = await service.listar(PERIODO);
+    const [auditoria] = await service.listar(PERIODO, { incluirDivergentes: true });
 
     assert.equal(auditoria?.resultado, "COM_DIVERGENCIA");
   });
@@ -166,7 +168,7 @@ describe("auditorias.service", () => {
       }),
     ]);
 
-    const [auditoria] = await service.listar(PERIODO);
+    const [auditoria] = await service.listar(PERIODO, { incluirDivergentes: true });
 
     assert.equal(auditoria?.resultado, "COM_DIVERGENCIA");
   });
@@ -179,7 +181,7 @@ describe("auditorias.service", () => {
       }),
     ]);
 
-    const [auditoria] = await service.listar(PERIODO);
+    const [auditoria] = await service.listar(PERIODO, { incluirDivergentes: true });
 
     assert.equal(auditoria?.resultado, "COM_DIVERGENCIA");
   });
@@ -203,6 +205,35 @@ describe("auditorias.service", () => {
     );
   });
 
+  it("por padrao devolve apenas as auditorias aprovadas", async () => {
+    const { service } = montarService([
+      auditoriaFalsa({ ocorrenciaIxcId: 1, tarefa: null }),
+      auditoriaFalsa({ ocorrenciaIxcId: 2, tarefa: "DIVERGENCIA DE O.S" }),
+      auditoriaFalsa({ ocorrenciaIxcId: 3, tarefa: "SEM DIVERGENCIA | SEM TROCA" }),
+    ]);
+
+    const dados = await service.listar(PERIODO);
+
+    assert.deepEqual(
+      dados.map((auditoria) => auditoria.ocorrenciaIxcId),
+      [1, 3],
+    );
+  });
+
+  it("devolve as duas metades quando pedido explicitamente", async () => {
+    const { service } = montarService([
+      auditoriaFalsa({ ocorrenciaIxcId: 1, tarefa: null }),
+      auditoriaFalsa({ ocorrenciaIxcId: 2, tarefa: "DIVERGENCIA DE O.S" }),
+    ]);
+
+    const dados = await service.listar(PERIODO, { incluirDivergentes: true });
+
+    assert.deepEqual(
+      dados.map((auditoria) => auditoria.resultado),
+      ["APROVADA_SEM_DIVERGENCIA", "COM_DIVERGENCIA"],
+    );
+  });
+
   it("nao descarta nenhuma linha ao classificar", async () => {
     const { service } = montarService([
       auditoriaFalsa({ ocorrenciaIxcId: 1, tarefa: "DIVERGENCIA DE O.S" }),
@@ -210,7 +241,7 @@ describe("auditorias.service", () => {
       auditoriaFalsa({ ocorrenciaIxcId: 3, tarefa: "SEM DIVERGENCIA | SEM TROCA" }),
     ]);
 
-    const dados = await service.listar(PERIODO);
+    const dados = await service.listar(PERIODO, { incluirDivergentes: true });
 
     assert.deepEqual(
       dados.map((auditoria) => auditoria.ocorrenciaIxcId),
@@ -268,13 +299,15 @@ describe("auditorias.service", () => {
     ];
     const { service } = montarService(linhas);
 
-    const listadas = await service.listar(PERIODO);
+    const todas = await service.listar(PERIODO, { incluirDivergentes: true });
+    const aprovadas = await service.listar(PERIODO);
     const resumo = await service.resumir(PERIODO);
 
-    assert.equal(resumo.total, listadas.length);
+    assert.equal(resumo.total, todas.length);
+    assert.equal(resumo.aprovadas, aprovadas.length);
     assert.equal(
-      resumo.aprovadas,
-      listadas.filter((a) => a.resultado === "APROVADA_SEM_DIVERGENCIA").length,
+      aprovadas.length,
+      todas.filter((a) => a.resultado === "APROVADA_SEM_DIVERGENCIA").length,
     );
   });
 
@@ -293,10 +326,33 @@ describe("auditorias.service", () => {
 
     assert.equal(auditoria?.ocorrenciaIxcId, 77);
     assert.equal(auditoria?.auditorIxcId, 5);
-    assert.equal(auditoria?.auditorNome, "DAVI RODRIGUES DE CARVALHO");
+    assert.equal(auditoria?.auditorNome, "OPERADOR 924");
     assert.equal(auditoria?.operadorIxcId, 924);
     assert.equal(auditoria?.assunto, "AUDITORIA INSTALACAO RESIDENCIAL");
     assert.equal(auditoria?.fechadoEm, "27/08/2026 11:00:00");
+  });
+
+  it("resolve o nome do auditor pelo id_operador, nao pelo id_tecnico", async () => {
+    const { service } = montarService([
+      auditoriaFalsa({
+        operadorIxcId: 507,
+        auditorNome: "RES - TECNICO DE CAMPO",
+      }),
+    ]);
+
+    const [auditoria] = await service.listar(PERIODO);
+
+    assert.equal(auditoria?.auditorNome, "OPERADOR 507");
+  });
+
+  it("mantem o nome do repositorio quando nao ha operador", async () => {
+    const { service } = montarService([
+      auditoriaFalsa({ operadorIxcId: null, auditorNome: "SEM OPERADOR" }),
+    ]);
+
+    const [auditoria] = await service.listar(PERIODO);
+
+    assert.equal(auditoria?.auditorNome, "SEM OPERADOR");
   });
 
   it("repassa o periodo recebido sem alterar", async () => {

@@ -12,6 +12,13 @@ const esquemaPeriodo = z
     path: ["dataInicio"],
   });
 
+const esquemaListagem = z.object({
+  incluirDivergentes: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((valor) => valor === "true"),
+});
+
 export async function listar(
   req: Request,
   res: Response,
@@ -19,7 +26,10 @@ export async function listar(
 ): Promise<void> {
   try {
     const periodo = esquemaPeriodo.parse(req.query);
-    const dados = await auditoriasService.listar(periodo);
+    const { incluirDivergentes } = esquemaListagem.parse(req.query);
+    const dados = await auditoriasService.listar(periodo, {
+      incluirDivergentes,
+    });
     res.status(200).json({ dados });
   } catch (erro) {
     next(erro);

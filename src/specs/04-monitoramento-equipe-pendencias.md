@@ -276,7 +276,67 @@ Com 1.792 grupos a janela anterior do ano passou a **caber no cache**, o que ant
 - **O cache tem teto de 60.000 linhas no total** (`MAXIMO_LINHAS_GUARDADAS`), além do teto de 20.000 por entrada. O teto global foi acrescentado depois de o servidor cair uma segunda vez por memória: só o limite por entrada permitia guardar 24 × 20.000 = 480 mil linhas.
 - **Semântica dos períodos.** Hoje são janelas móveis (`ano` = últimos 365 dias, `mes` = últimos 30). Os rótulos "Mês" e "Ano" sugerem calendário. O usuário não pode renomear as opções — foi especificado assim —, então a decisão é entre manter a janela móvel ou trocar a semântica para calendário. Trocar reduz o ano em 20% hoje (131.443 contra 165.188 linhas) mas não resolve o tempo, e o ganho desaparece em dezembro. Mudar para calendário também exige rever a comparação com a janela anterior no Monitoramento: no dia 4 do mês, comparar 4 dias contra 31 daria variação sempre negativa.
 
-### 10. Duas categorias que nunca aparecem — não confirmado
+### 10. Responsabilidade de cada rota, e o bug de nome que apareceu no caminho
+
+Ajustado em 04/09/2026, a pedido do usuário: cada rota passa a carregar a própria responsabilidade.
+
+**a) `/auditorias` filtra por padrão.** Sem parâmetro devolve apenas `APROVADA_SEM_DIVERGENCIA` — o contrato honesto para o nome da rota. Com `?incluirDivergentes=true` devolve as duas metades.
+
+O parâmetro existe porque a tela de Monitoramento precisa das duas: os gráficos empilhados e os blocos por assunto tiram numerador e denominador da mesma linha. Se ela tivesse de buscar o lado divergente em `/divergencias`, **43% do volume divergente não casaria com nenhum assunto de auditoria** — é o problema da antiga seção 7.1 do handoff, que só está resolvido porque as duas metades vêm juntas.
+
+**b) `/divergencias` ganhou `tipoDivergencia`.** A ideia original era expor `tarefa` (a próxima tarefa da ocorrência), mas ela vem **NULL em 100%** das 2.583 ocorrências de divergência do mês: a O.S de divergência é o fim do fluxo, não encaminha para lugar nenhum.
+
+O campo útil é outro — `su_oss_chamado.id_wfl_tarefa`, a tarefa **atual do chamado**, que descreve o tipo:
+
+| | |
+|---|---:|
+| `DIVERGENCIA DE O.S` | 47,8% |
+| `4.1 - DIVERGÊNCIA DE O.S \| APROVADO - TAXA ISENTA CORRETAMENTE` | 38,5% |
+| `DIVERGENCIA DE O.S \| NAO HOUVE TROCA DE EQUIPAMENTO` | 9,5% |
+| variantes de troca de equipamento, `INFRAESTRUTURA`, `CORPORATIVA`, `TERCEIRO`, `REPROVADO` | resto |
+
+É o **mesmo vocabulário** do `tarefa` de `/auditorias`: a próxima tarefa da auditoria vira a tarefa atual do chamado de divergência. Confirma o modelo do fluxo de forma direta.
+
+**c) Bug encontrado no caminho: o nome do auditor estava errado em 13% das linhas.**
+
+`/auditorias` trazia `auditorNome` de `funcionarios` via `id_tecnico`. Só que em parte das ocorrências o `id_tecnico` carrega o **técnico de campo** (`RES - ADEMIR ANDRADE`, `DSL - MICHAEL NOVAIS`), não o auditor. Medido no mês: o nome batia com `usuarios.nome` do `id_operador` em **17.365 de 19.944 linhas (87,1%)**.
+
+Como o ranking do Monitoramento tomava o nome da primeira linha de cada auditor, um auditor podia aparecer com nome de técnico — ou de outro auditor. Foi assim que a rota de resumo exibiu o operador 507 como "GUSTAVO HAINO" quando 507 é LUANA ALVES.
+
+Corrigido: o service resolve o nome contra `usuarios` pelo `id_operador`, exatamente como `/divergencias` já fazia. `buscarNomesOperadores` saiu de `repositorio.divergencias.ixc.ts` para `repositorios/operadores.ixc.ts` e agora serve aos dois. Depois da correção, **cada operador tem um único nome**, e apareceu um auditor que estava escondido atrás de nome errado: MATHEUS SANTOS OLIVEIRA (id 518), com 1.473 auditorias no mês.
+
+### 11. Por que os totais das duas telas não batem — e não vão bater
+
+Levantado pelo usuário em 04/09/2026, ao comparar "Com divergência" do Status Operacional com o KPI "Divergências" da outra tela. No mês: **2.414** contra **2.203**. Três causas somadas:
+
+1. **Unidade de contagem.** O KPI de Divergências conta O.S de divergência distintas; "Motivos apontados" conta ocorrências (2.488). O Monitoramento conta ocorrências de auditoria.
+2. **Eventos diferentes.** Monitoramento responde "das auditorias feitas, quantas acharam problema?"; Divergências responde "quantas O.S de divergência fecharam?".
+3. **Defasagem de janela.** No mês, 147 auditorias marcadas (6,1%) tiveram a divergência fechando fora do período, e 10 chamados de divergência vieram de auditorias anteriores.
+
+**A estrutura impede a igualdade.** Medindo por ticket — que é a chave que amarra as três etapas, e está preenchida em 100% dos chamados de auditoria — um ticket com divergência tem quase sempre **mais de uma ocorrência de auditoria**: 1.116 tickets com 2, 815 com 4, 149 com 6, 110 com 8 ou mais. Um ticket com 4 auditorias e 1 divergência vai sempre contar 4 de um lado e 1 do outro.
+
+Validando a regra de classificação contra essa verdade estrutural (existe O.S de divergência no mesmo ticket?): **precisão 94,4%, acurácia 91,8%**. O recall aparente de 66,3% é artefato da atribuição por ticket — quando um ticket tem 4 auditorias e 1 divergência, só uma delas a gerou e as outras três são aprovações legítimas.
+
+**Resolvido por explicação, não por número.** Os totais estão certos nas duas telas e não devem convergir. Em 04/09/2026 foi acrescentado um ícone de ajuda (`q-tooltip`, padrão já usado no projeto) em cada um dos dois cards:
+
+- Monitoramento, "Status Operacional": *auditorias em que o auditor encontrou problema e encaminhou para divergência*;
+- Divergências Técnicas, KPI "Divergências": *O.S de divergência fechadas, contadas uma vez cada*.
+
+A nota abaixo do KPI de Divergências passou a acompanhar o período selecionado ("divergências fechadas hoje", "…na semana", "…no mês", "…no ano"). Os estilos `.rf-ajuda` e `.rf-ajuda__balao` foram para `src/css/app.scss`, usando os tokens existentes.
+
+**Reconciliação exata, medida em 04/09/2026 via ticket:**
+
+```
+46  auditorias marcadas COM_DIVERGENCIA   (Monitoramento)
+ -8  marcadas sem O.S de divergencia no ticket
+ +3  O.S de divergencia orfas (auditoria de origem fora do dia)
+----
+41  O.S de divergencia                    (Divergencias Tecnicas)
+```
+
+Das 8 sem par, 2 eram `AUDITORIA DE DOCUMENTO E SELFIE - REPROVADA` — diferença **permanente**, porque esse fluxo nunca gera O.S de divergência — e 6 eram encaminhamentos cuja O.S ainda não fechara, diferença **temporária**. As 45 ocorrências para 41 O.S se explicam por 4 chamados com dois motivos cada.
+
+### 12. Duas categorias que nunca aparecem — não confirmado
 
 A tela deriva a categoria do prefixo do nome do técnico e declara cinco: `RES` Residencial, `DSL` Condomínio, `INF` Infraestrutura, `COR` Corporativo, `TER` Terceiro.
 

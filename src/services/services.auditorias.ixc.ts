@@ -1,8 +1,13 @@
 import * as repositorioAuditoriasPadrao from "../repositories/repositorio.auditorias.ixc.ts";
+import { buscarNomesOperadores } from "../repositories/operadores.ixc.ts";
 import type {
   AuditoriaIxc,
   PeriodoAuditorias,
 } from "../repositories/repositorio.auditorias.ixc.ts";
+
+export interface OpcoesListagem {
+  incluirDivergentes?: boolean;
+}
 
 interface CamposDeVeredito {
   tarefa: string | null;
@@ -27,6 +32,7 @@ export interface ResumoAuditorias {
 
 interface DependenciasAuditorias {
   repositorioAuditorias: typeof repositorioAuditoriasPadrao;
+  buscarNomes: typeof buscarNomesOperadores;
 }
 
 export type ResultadoAuditoria = "APROVADA_SEM_DIVERGENCIA" | "COM_DIVERGENCIA";
@@ -75,14 +81,40 @@ export function criarAuditoriasService(
 ) {
   const repositorioAuditorias =
     dependencias.repositorioAuditorias ?? repositorioAuditoriasPadrao;
+  const buscarNomes = dependencias.buscarNomes ?? buscarNomesOperadores;
 
-  async function listar(periodo: PeriodoAuditorias): Promise<Auditoria[]> {
+  async function nomesDosOperadores(
+    ids: (number | null)[],
+  ): Promise<Map<number, string>> {
+    return buscarNomes([
+      ...new Set(ids.filter((id): id is number => id !== null)),
+    ]);
+  }
+
+  async function listar(
+    periodo: PeriodoAuditorias,
+    opcoes: OpcoesListagem = {},
+  ): Promise<Auditoria[]> {
     const auditorias = await repositorioAuditorias.listar(periodo);
 
-    return auditorias.map((auditoria) => ({
+    const nomes = await nomesDosOperadores(
+      auditorias.map((auditoria) => auditoria.operadorIxcId),
+    );
+
+    const classificadas = auditorias.map((auditoria) => ({
       ...auditoria,
+      auditorNome:
+        auditoria.operadorIxcId === null
+          ? auditoria.auditorNome
+          : (nomes.get(auditoria.operadorIxcId) ?? auditoria.auditorNome),
       resultado: classificar(auditoria),
     }));
+
+    if (opcoes.incluirDivergentes === true) return classificadas;
+
+    return classificadas.filter(
+      (auditoria) => auditoria.resultado === "APROVADA_SEM_DIVERGENCIA",
+    );
   }
 
   async function contar(periodo: PeriodoAuditorias): Promise<number> {
@@ -91,6 +123,10 @@ export function criarAuditoriasService(
 
   async function resumir(periodo: PeriodoAuditorias): Promise<ResumoAuditorias> {
     const { grupos, intervalos } = await repositorioAuditorias.resumir(periodo);
+
+    const nomes = await nomesDosOperadores(
+      grupos.map((grupo) => grupo.operadorIxcId),
+    );
 
     const porIntervalo = new Map(
       intervalos.map((intervalo) => [
@@ -114,7 +150,7 @@ export function criarAuditoriasService(
 
       const atual = porAuditor.get(auditorId) ?? {
         auditorId,
-        auditor: grupo.auditorNome,
+        auditor: nomes.get(auditorId) ?? null,
         total: 0,
         aprovadas: 0,
         intervaloMedioMinutos: umaCasa(intervalo?.media ?? 0),
@@ -122,7 +158,6 @@ export function criarAuditoriasService(
 
       atual.total += quantidade;
       if (aprovado) atual.aprovadas += quantidade;
-      atual.auditor ??= grupo.auditorNome;
 
       porAuditor.set(auditorId, atual);
 

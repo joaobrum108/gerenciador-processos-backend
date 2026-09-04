@@ -5,8 +5,6 @@ import { autorizar } from "../middlewares/autorizar.ts";
 
 const router = Router();
 
-// Toda a administracao de acessos exige a mesma permissao: quem enxerga a tela
-// de acessos ao sistema opera nela por inteiro.
 const PERMISSAO_ACESSOS = "usuarios.acessosSistema.view";
 
 router.use(autenticar);

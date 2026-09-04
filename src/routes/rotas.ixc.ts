@@ -11,7 +11,7 @@ import { autorizar } from "../middlewares/autorizar.ts";
 
 const routesIxc = Router();
 
-// routesIxc.use(autenticar);
+routesIxc.use(autenticar);
 
 routesIxc.get(
   "/funcionarios",

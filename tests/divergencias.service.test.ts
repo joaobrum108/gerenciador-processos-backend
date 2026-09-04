@@ -24,6 +24,7 @@ function divergenciaFalsa(
     auditorIxcId: 30,
     auditorNome: null,
     observacao: "Foto do EPI ausente na O.S",
+    tipoDivergencia: "DIVERGENCIA DE O.S",
     abertoEm: "27/08/2026 09:00:00",
     fechadoEm: "27/08/2026 11:00:00",
     ...sobrescritas,
