@@ -7,6 +7,8 @@ Esta pasta é a referência de integração entre o frontend e o backend. Antes 
 1. [`01-integracao-frontend.md`](./01-integracao-frontend.md): checklist do `.env`, `api.ts`, autenticação e tratamento de erros.
 2. [`02-api-implementada.md`](./02-api-implementada.md): rotas e contratos que existem no código hoje.
 3. [`03-rotas-backend.md`](./03-rotas-backend.md): planejamento das rotas futuras por tela. Uma rota presente somente nesse arquivo ainda não pode ser consumida.
+4. [`04-monitoramento-equipe-pendencias.md`](./04-monitoramento-equipe-pendencias.md): o que ainda é mock na tela de Monitoramento da Equipe e qual integração destrava cada item.
+5. [`05-handoff-integracao-monitoramento.md`](./05-handoff-integracao-monitoramento.md): estado da integração do Monitoramento, decisões já tomadas, armadilhas do IXC e o que falta decidir. **Leia antes de continuar esse trabalho.**
 
 ## Estado atual resumido
 
