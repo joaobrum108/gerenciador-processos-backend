@@ -5,6 +5,7 @@ import router from "./router.ts";
 import { rotaNaoEncontrada, tratarErro } from "./middlewares/tratar-erro.ts";
 import { pool } from "./database/pool.ts";
 import { encerrarPoolIxc } from "./database/pool.ixc.ts";
+import { iniciarAgendador } from "./services/agendador.sincronizacao.ts";
 
 const env = lerEnv();
 
@@ -22,6 +23,8 @@ app.use(tratarErro);
 const servidor = app.listen(port, () => {
   console.log(`servidor rodando na porta ${port}`);
 });
+
+const agendador = iniciarAgendador();
 
 const PRAZO_ENCERRAMENTO_MS = 3000;
 
@@ -42,6 +45,7 @@ async function encerrar(sinal: string): Promise<void> {
   prazo.unref();
 
   try {
+    if (agendador !== null) clearInterval(agendador);
     servidor.close();
     await Promise.all([pool.end(), encerrarPoolIxc()]);
   } catch (erro) {

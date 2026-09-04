@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { NextFunction, Request, Response } from "express";
-import { divergenciasService } from "../services/services.divergencias.ixc.ts";
+import { divergenciasLocalService } from "../services/services.divergencias.local.ts";
 
 const esquemaPeriodo = z
   .object({
@@ -19,7 +19,7 @@ export async function listar(
 ): Promise<void> {
   try {
     const periodo = esquemaPeriodo.parse(req.query);
-    const dados = await divergenciasService.listar(periodo);
+    const dados = await divergenciasLocalService.listar(periodo);
     res.status(200).json({ dados });
   } catch (erro) {
     next(erro);

@@ -1,5 +1,6 @@
 import * as repositorioAuditoriasPadrao from "../repositories/repositorio.auditorias.ixc.ts";
 import { buscarNomesOperadores } from "../repositories/operadores.ixc.ts";
+import { classificarOcorrencia } from "./classificacao.auditoria.ts";
 import type {
   AuditoriaIxc,
   PeriodoAuditorias,
@@ -7,12 +8,6 @@ import type {
 
 export interface OpcoesListagem {
   incluirDivergentes?: boolean;
-}
-
-interface CamposDeVeredito {
-  tarefa: string | null;
-  assunto: string | null;
-  diagnostico: string | null;
 }
 
 export interface AuditorResumido {
@@ -35,45 +30,14 @@ interface DependenciasAuditorias {
   buscarNomes: typeof buscarNomesOperadores;
 }
 
-export type ResultadoAuditoria = "APROVADA_SEM_DIVERGENCIA" | "COM_DIVERGENCIA";
+export type { ResultadoAuditoria } from "./classificacao.auditoria.ts";
 
-export type Auditoria = AuditoriaIxc & { resultado: ResultadoAuditoria };
+export type Auditoria = AuditoriaIxc & {
+  resultado: import("./classificacao.auditoria.ts").ResultadoAuditoria;
+};
 
 function umaCasa(valor: number): number {
   return Math.round(valor * 10) / 10;
-}
-
-const ETAPA_DIVERGENCIA = "DIVERGENCIA DE O.S";
-const REPROVACAO = "REPROVAD";
-const NEGACOES_DE_DIVERGENCIA = ["SEM DIVERG", "NAO HOUVE DIVERG"];
-
-function normalizar(valor: string | null): string {
-  if (valor === null) return "";
-
-  return valor.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
-}
-
-function nega(texto: string): boolean {
-  return NEGACOES_DE_DIVERGENCIA.some((negacao) => texto.includes(negacao));
-}
-
-function apontaDivergencia(valor: string | null): boolean {
-  const texto = normalizar(valor);
-
-  return texto.includes(ETAPA_DIVERGENCIA) && !nega(texto);
-}
-
-function reprovou(valor: string | null): boolean {
-  return normalizar(valor).includes(REPROVACAO);
-}
-
-function classificar(campos: CamposDeVeredito): ResultadoAuditoria {
-  return apontaDivergencia(campos.tarefa) ||
-    apontaDivergencia(campos.assunto) ||
-    reprovou(campos.tarefa) ||
-    reprovou(campos.diagnostico)
-    ? "COM_DIVERGENCIA"
-    : "APROVADA_SEM_DIVERGENCIA";
 }
 
 export function criarAuditoriasService(
@@ -107,7 +71,7 @@ export function criarAuditoriasService(
         auditoria.operadorIxcId === null
           ? auditoria.auditorNome
           : (nomes.get(auditoria.operadorIxcId) ?? auditoria.auditorNome),
-      resultado: classificar(auditoria),
+      resultado: classificarOcorrencia(auditoria),
     }));
 
     if (opcoes.incluirDivergentes === true) return classificadas;
@@ -145,7 +109,7 @@ export function criarAuditoriasService(
     for (const grupo of grupos) {
       const auditorId = grupo.operadorIxcId ?? 0;
       const quantidade = Number(grupo.total);
-      const aprovado = classificar(grupo) === "APROVADA_SEM_DIVERGENCIA";
+      const aprovado = classificarOcorrencia(grupo) === "APROVADA_SEM_DIVERGENCIA";
       const intervalo = porIntervalo.get(auditorId);
 
       const atual = porAuditor.get(auditorId) ?? {
