@@ -6,7 +6,6 @@ import {
   contar as controllerAuditoriasTotal,
   resumir as controllerAuditoriasResumo,
 } from "../controllers/controllerAuditorias.ixc.ts";
-import { buscar as controllerEquipamentos } from "../controllers/equipamentos.ixc.controller.ts";
 import { autenticar } from "../middlewares/autenticar.ts";
 import { autorizar } from "../middlewares/autorizar.ts";
 
@@ -25,11 +24,5 @@ routesIxc.get("/divergencias", controllerDivergencias);
 routesIxc.get("/auditorias/total", controllerAuditoriasTotal);
 routesIxc.get("/auditorias/resumo", controllerAuditoriasResumo);
 routesIxc.get("/auditorias", controllerAuditorias);
-
-routesIxc.get(
-  "/equipamentos",
-  autorizar("auditorias.registroDevolucao.view"),
-  controllerEquipamentos,
-);
 
 export default routesIxc;
