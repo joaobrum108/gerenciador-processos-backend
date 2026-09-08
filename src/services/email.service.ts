@@ -17,7 +17,7 @@ export interface EmailService {
   ): Promise<void>;
 }
 
-function configuracaoSmtp() {
+export function configuracaoSmtp() {
   const host = process.env.SMTP_HOST;
   const usuario = process.env.SMTP_USER;
   const senha = process.env.SMTP_PASS;

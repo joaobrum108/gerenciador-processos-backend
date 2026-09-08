@@ -15,6 +15,7 @@ import rankingRoutes from "./routes/ranking.routes.ts";
 import cargosRoutes from "./routes/cargos.routes.ts";
 import colaboradoresRoutes from "./routes/colaboradores.routes.ts";
 import registrosPontoRoutes from "./routes/registros-ponto.routes.ts";
+import suporteRoutes from "./routes/suporte.routes.ts";
 
 const router = Router();
 
@@ -35,6 +36,7 @@ router.use("/ranking", rankingRoutes);
 router.use("/cargos", cargosRoutes);
 router.use("/colaboradores", colaboradoresRoutes);
 router.use("/registros-ponto", registrosPontoRoutes);
+router.use("/suporte", suporteRoutes);
 router.use("/integracoes/ixc", routesIxc);
 
 export default router;
