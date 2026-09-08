@@ -239,19 +239,19 @@ describe("usuarios.service criar", () => {
     );
 
     const gravado = registros.usuariosCriados[0];
-    assert.equal(gravado.cargo, "Não informado");
+    assert.equal(gravado.cargoId, null);
     assert.equal(gravado.escala, "5x2");
     assert.equal(gravado.status, "ATIVO");
   });
 
-  it("grava cargo, escala e status informados", async () => {
+  it("grava cargoId, escala e status informados", async () => {
     const { service, registros } = montarService();
 
     await service.criar(
       {
         nomeExibicao: "Joao",
         emailLogin: "joao@redfox.com",
-        cargo: "  Tecnico de Campo  ",
+        cargoId: "11111111-1111-1111-1111-111111111111",
         escala: "12x36",
         status: "CONVITE_PENDENTE",
         provedorAuth: "LOCAL",
@@ -261,7 +261,7 @@ describe("usuarios.service criar", () => {
     );
 
     const gravado = registros.usuariosCriados[0];
-    assert.equal(gravado.cargo, "Tecnico de Campo");
+    assert.equal(gravado.cargoId, "11111111-1111-1111-1111-111111111111");
     assert.equal(gravado.escala, "12x36");
     assert.equal(gravado.status, "CONVITE_PENDENTE");
   });

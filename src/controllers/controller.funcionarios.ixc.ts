@@ -1,6 +1,8 @@
 import { z } from "zod";
 import type { NextFunction, Request, Response } from "express";
 import { funcionariosIxcService } from "../services/services.funcionarios.ixc.ts";
+import { ORDENACOES_PERMITIDAS } from "../repositories/repository.funcionarios.ixc.ts";
+import { esquemaPaginacao, montarResposta } from "./paginacao.ts";
 
 const esquemaId = z.object({
   id: z.coerce
@@ -9,14 +11,29 @@ const esquemaId = z.object({
     .positive("Identificador invalido"),
 });
 
+const esquemaListagem = esquemaPaginacao(ORDENACOES_PERMITIDAS, "nome").extend({
+  busca: z.string().trim().max(150).optional(),
+  ativo: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((valor) => (valor === undefined ? undefined : valor === "true")),
+});
+
 export async function listar(
-  _req: Request,
+  req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> {
   try {
-    const dados = await funcionariosIxcService.listar();
-    res.status(200).json({ dados });
+    const { pagina, porPagina, ordenarPor, ordem, busca, ativo } =
+      esquemaListagem.parse(req.query);
+
+    const { dados, total } = await funcionariosIxcService.listar(
+      { busca, ativo },
+      { ordenarPor, ordem, pagina, porPagina }
+    );
+
+    res.status(200).json(montarResposta(dados, total, pagina, porPagina));
   } catch (erro) {
     next(erro);
   }

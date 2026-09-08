@@ -1,5 +1,9 @@
 import * as funcionariosIxcRepositoryPadrao from "../repositories/repository.funcionarios.ixc.ts";
-import type { FuncionarioIxc } from "../repositories/repository.funcionarios.ixc.ts";
+import type {
+  FiltrosFuncionarios,
+  FuncionarioIxc,
+  OrdenacaoFuncionarios,
+} from "../repositories/repository.funcionarios.ixc.ts";
 import { ErroNaoEncontrado } from "../erros.ts";
 
 interface DependenciasFuncionariosIxc {
@@ -12,8 +16,16 @@ export function criarFuncionariosIxcService(
   const funcionariosIxcRepository =
     dependencias.funcionariosIxcRepository ?? funcionariosIxcRepositoryPadrao;
 
-  async function listar(): Promise<FuncionarioIxc[]> {
-    return funcionariosIxcRepository.listar();
+  async function listar(
+    filtros: FiltrosFuncionarios,
+    ordenacao: OrdenacaoFuncionarios
+  ): Promise<{ dados: FuncionarioIxc[]; total: number }> {
+    const [dados, total] = await Promise.all([
+      funcionariosIxcRepository.listar(filtros, ordenacao),
+      funcionariosIxcRepository.contar(filtros),
+    ]);
+
+    return { dados, total };
   }
 
   async function buscarPorId(id: number): Promise<FuncionarioIxc> {

@@ -9,6 +9,22 @@ Este projeto **não cria tabelas**. O schema do banco pertence ao projeto `api-d
 - Node.js 20 ou superior
 - PostgreSQL rodando com o banco `redfox_processos` criado e as tabelas já aplicadas pelo projeto `api-db-redfox-process`
 
+Este backend **não cria nem altera schema**. Ele usa `pg` puro, sem Prisma e sem
+migrations: assume que as tabelas existem e falha em runtime se não existirem.
+
+Depois de puxar mudanças que mexam no banco, aplique as migrations antes de
+subir a API:
+
+```bash
+cd ../api-db-redfox-process
+npm run prisma:migrate
+```
+
+Subir sem isso dá erro de coluna inexistente — por exemplo `cargo_id` ou
+`entrada_expediente`, que as consultas de usuário já usam. O porquê de cada
+mudança de schema está em `api-db-redfox-process/README.md`, na seção
+"Decisões de implementação".
+
 ## Instalação
 
 ```bash
@@ -99,9 +115,26 @@ Todas sob o prefixo `/api/v1`.
 | GET | `/grupos-permissao/:id/permissoes` | sim | `usuarios.permissoes.view` |
 | PUT | `/grupos-permissao/:id/permissoes` | sim | `usuarios.permissoes.editar` |
 | GET | `/permissoes` | sim | `usuarios.permissoes.view` ou `usuarios.grupos.view` |
+| GET | `/cargos` | sim | `colaboradores.cargosFuncoes.view` ou `usuarios.acessosSistema.view` |
+| POST PUT DELETE | `/cargos` | sim | `colaboradores.cargosFuncoes.view` |
+| GET POST | `/motivos-devolucao` | sim | leitura: `auditorias.registroDevolucao.view` ou `cadastros.parametrosDevolucao.view` · escrita: `cadastros.parametrosDevolucao.view` |
+| PUT | `/motivos-devolucao/:id` | sim | `cadastros.parametrosDevolucao.view` |
+| GET POST | `/paradeiros` | sim | mesmas de `/motivos-devolucao` |
+| PUT | `/paradeiros/:id` | sim | `cadastros.parametrosDevolucao.view` |
+| GET | `/integracoes/ixc/funcionarios` | sim | — |
+| GET | `/integracoes/ixc/equipamentos` | sim | `auditorias.registroDevolucao.view` |
 
 Toda a administração de acessos usa a mesma permissão: quem enxerga a tela de
 acessos ao sistema opera nela por inteiro.
+
+`/cargos` e as parametrizações de devolução não têm chave `.criar`/`.editar` no
+catálogo de permissões — a escrita reusa a permissão de cadastro da própria
+tela. Já a leitura de `/cargos` aceita também `usuarios.acessosSistema.view`,
+senão quem edita um usuário não conseguiria montar o select de cargo.
+
+Nenhuma das duas tem `DELETE` que apague em cascata: cargo em uso responde 409,
+e motivos e paradeiros só podem ser desativados (`PUT` com `ativo: false`),
+porque são FK de `registros_devolucao` e apagá-los quebraria registro histórico.
 
 ## Usuários
 

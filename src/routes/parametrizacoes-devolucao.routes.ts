@@ -10,20 +10,48 @@ const PERMISSOES = [
   "cadastros.parametrosDevolucao.view",
 ] as const;
 
+const PERMISSAO_CADASTRO = "cadastros.parametrosDevolucao.view";
+
 export const motivosDevolucaoRoutes = Router();
+
+motivosDevolucaoRoutes.use(autenticar);
 
 motivosDevolucaoRoutes.get(
   "/",
-  autenticar,
   autorizar(...PERMISSOES),
   controller.listarMotivos,
 );
 
+motivosDevolucaoRoutes.post(
+  "/",
+  autorizar(PERMISSAO_CADASTRO),
+  controller.criarMotivo,
+);
+
+motivosDevolucaoRoutes.put(
+  "/:id",
+  autorizar(PERMISSAO_CADASTRO),
+  controller.atualizarMotivo,
+);
+
 export const paradeirosRoutes = Router();
+
+paradeirosRoutes.use(autenticar);
 
 paradeirosRoutes.get(
   "/",
-  autenticar,
   autorizar(...PERMISSOES),
   controller.listarParadeiros,
+);
+
+paradeirosRoutes.post(
+  "/",
+  autorizar(PERMISSAO_CADASTRO),
+  controller.criarParadeiro,
+);
+
+paradeirosRoutes.put(
+  "/:id",
+  autorizar(PERMISSAO_CADASTRO),
+  controller.atualizarParadeiro,
 );

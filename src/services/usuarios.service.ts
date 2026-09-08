@@ -26,9 +26,15 @@ export interface UsuarioResposta {
   id: string;
   nomeExibicao: string;
   emailLogin: string;
-  cargo: string;
+  cargoId: string | null;
+  cargo: string | null;
+  cargoNivel: string | null;
   status: StatusUsuario;
   escala: EscalaTrabalho;
+  entradaExpediente: string | null;
+  saidaAlmoco: string | null;
+  retornoAlmoco: string | null;
+  saidaExpediente: string | null;
   funcionarioIxcId: string | null;
   funcionarioNomeSnapshot: string | null;
   provedorAuth: string;
@@ -49,16 +55,19 @@ export interface UsuarioCriado extends UsuarioResposta {
   senhaTemporaria?: string;
 }
 
-export const CARGO_PADRAO = "Não informado";
 export const ESCALA_PADRAO: EscalaTrabalho = "5x2";
 export const STATUS_PADRAO: StatusUsuario = "ATIVO";
 
 export interface EntradaCriacaoUsuario {
   nomeExibicao: string;
   emailLogin: string;
-  cargo?: string | undefined;
+  cargoId?: string | null | undefined;
   escala?: EscalaTrabalho | undefined;
   status?: StatusUsuario | undefined;
+  entradaExpediente?: string | null | undefined;
+  saidaAlmoco?: string | null | undefined;
+  retornoAlmoco?: string | null | undefined;
+  saidaExpediente?: string | null | undefined;
   provedorAuth: string;
   funcionarioIxcId?: string | undefined;
   funcionarioNomeSnapshot?: string | undefined;
@@ -68,8 +77,12 @@ export interface EntradaCriacaoUsuario {
 export interface EntradaAtualizacaoUsuario {
   nomeExibicao: string;
   emailLogin: string;
-  cargo?: string | undefined;
+  cargoId?: string | null | undefined;
   escala?: EscalaTrabalho | undefined;
+  entradaExpediente?: string | null | undefined;
+  saidaAlmoco?: string | null | undefined;
+  retornoAlmoco?: string | null | undefined;
+  saidaExpediente?: string | null | undefined;
   funcionarioIxcId?: string | undefined;
   funcionarioNomeSnapshot?: string | undefined;
   grupoIds: string[];
@@ -104,9 +117,15 @@ function paraResposta(
     id: usuario.id,
     nomeExibicao: usuario.nomeExibicao,
     emailLogin: usuario.emailLogin,
+    cargoId: usuario.cargoId,
     cargo: usuario.cargo,
+    cargoNivel: usuario.cargoNivel,
     status: usuario.status,
     escala: usuario.escala,
+    entradaExpediente: usuario.entradaExpediente,
+    saidaAlmoco: usuario.saidaAlmoco,
+    retornoAlmoco: usuario.retornoAlmoco,
+    saidaExpediente: usuario.saidaExpediente,
     funcionarioIxcId: usuario.funcionarioIxcId,
     funcionarioNomeSnapshot: usuario.funcionarioNomeSnapshot,
     provedorAuth: usuario.provedorAuth,
@@ -271,9 +290,13 @@ export function criarUsuariosService(
         {
           nomeExibicao: entrada.nomeExibicao.trim(),
           emailLogin,
-          cargo: entrada.cargo?.trim() || CARGO_PADRAO,
+          cargoId: entrada.cargoId ?? null,
           escala: entrada.escala ?? ESCALA_PADRAO,
           status: entrada.status ?? STATUS_PADRAO,
+          entradaExpediente: entrada.entradaExpediente ?? null,
+          saidaAlmoco: entrada.saidaAlmoco ?? null,
+          retornoAlmoco: entrada.retornoAlmoco ?? null,
+          saidaExpediente: entrada.saidaExpediente ?? null,
           senhaHash,
           provedorAuth: entrada.provedorAuth,
           funcionarioIxcId: entrada.funcionarioIxcId ?? null,
@@ -391,8 +414,25 @@ export function criarUsuariosService(
           emailLogin,
           // Omitir cargo/escala preserva o que ja estava gravado, em vez de
           // silenciosamente devolve-los ao valor padrao.
-          cargo: entrada.cargo?.trim() || atual.cargo,
+          cargoId:
+            entrada.cargoId === undefined ? atual.cargoId : entrada.cargoId,
           escala: entrada.escala ?? atual.escala,
+          entradaExpediente:
+            entrada.entradaExpediente === undefined
+              ? atual.entradaExpediente
+              : entrada.entradaExpediente,
+          saidaAlmoco:
+            entrada.saidaAlmoco === undefined
+              ? atual.saidaAlmoco
+              : entrada.saidaAlmoco,
+          retornoAlmoco:
+            entrada.retornoAlmoco === undefined
+              ? atual.retornoAlmoco
+              : entrada.retornoAlmoco,
+          saidaExpediente:
+            entrada.saidaExpediente === undefined
+              ? atual.saidaExpediente
+              : entrada.saidaExpediente,
           funcionarioIxcId: entrada.funcionarioIxcId ?? null,
           funcionarioNomeSnapshot: entrada.funcionarioNomeSnapshot ?? null,
         },

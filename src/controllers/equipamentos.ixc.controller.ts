@@ -40,16 +40,7 @@ export async function buscar(
       normalizar(identificador),
     );
 
-    // A consulta ao IXC ainda nao foi escrita — ver o bloco de instrucoes em
-    // repositories/equipamentos.ixc.ts. Enquanto isso a lista vem vazia, e o
-    // front trata isso como "nao achei, digite manualmente".
-    res.status(200).json({
-      dados,
-      ixcDisponivel: true,
-      ...(dados.length === 0
-        ? { motivo: "Busca de equipamento no IXC ainda nao implementada" }
-        : {}),
-    });
+    res.status(200).json({ dados, ixcDisponivel: true });
   } catch (erro) {
     next(erro);
   }

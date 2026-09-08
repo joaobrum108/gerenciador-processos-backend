@@ -14,9 +14,15 @@ export interface UsuarioRegistro {
   funcionarioNomeSnapshot: string | null;
   nomeExibicao: string;
   emailLogin: string;
-  cargo: string;
+  cargoId: string | null;
+  cargo: string | null;
+  cargoNivel: string | null;
   status: StatusUsuario;
   escala: EscalaTrabalho;
+  entradaExpediente: string | null;
+  saidaAlmoco: string | null;
+  retornoAlmoco: string | null;
+  saidaExpediente: string | null;
   provedorAuth: string;
   ativo: boolean;
   deveTrocarSenha: boolean;
@@ -50,8 +56,12 @@ export interface FiltrosUsuarios {
 export interface DadosCriacaoUsuario {
   nomeExibicao: string;
   emailLogin: string;
-  cargo: string;
+  cargoId: string | null;
   escala: EscalaTrabalho;
+  entradaExpediente: string | null;
+  saidaAlmoco: string | null;
+  retornoAlmoco: string | null;
+  saidaExpediente: string | null;
   status: StatusUsuario;
   senhaHash: string | null;
   provedorAuth: string;
@@ -64,8 +74,12 @@ export interface DadosCriacaoUsuario {
 export interface DadosAtualizacaoUsuario {
   nomeExibicao: string;
   emailLogin: string;
-  cargo: string;
+  cargoId: string | null;
   escala: EscalaTrabalho;
+  entradaExpediente: string | null;
+  saidaAlmoco: string | null;
+  retornoAlmoco: string | null;
+  saidaExpediente: string | null;
   funcionarioIxcId: string | null;
   funcionarioNomeSnapshot: string | null;
 }
@@ -76,9 +90,15 @@ const COLUNAS = `
   funcionario_nome_snapshot AS "funcionarioNomeSnapshot",
   nome_exibicao AS "nomeExibicao",
   email_login AS "emailLogin",
-  cargo,
+  cargo_id AS "cargoId",
+  (SELECT c.nome FROM cargos c WHERE c.id = usuarios.cargo_id) AS "cargo",
+  (SELECT c.nivel FROM cargos c WHERE c.id = usuarios.cargo_id) AS "cargoNivel",
   status,
   escala,
+  to_char(entrada_expediente, 'HH24:MI') AS "entradaExpediente",
+  to_char(saida_almoco, 'HH24:MI') AS "saidaAlmoco",
+  to_char(retorno_almoco, 'HH24:MI') AS "retornoAlmoco",
+  to_char(saida_expediente, 'HH24:MI') AS "saidaExpediente",
   provedor_auth AS "provedorAuth",
   ativo,
   deve_trocar_senha AS "deveTrocarSenha",
@@ -211,9 +231,15 @@ export async function listar(
        u.funcionario_nome_snapshot AS "funcionarioNomeSnapshot",
        u.nome_exibicao AS "nomeExibicao",
        u.email_login AS "emailLogin",
-       u.cargo,
+       u.cargo_id AS "cargoId",
+       c.nome AS "cargo",
+       c.nivel AS "cargoNivel",
        u.status,
        u.escala,
+       to_char(u.entrada_expediente, 'HH24:MI') AS "entradaExpediente",
+       to_char(u.saida_almoco, 'HH24:MI') AS "saidaAlmoco",
+       to_char(u.retorno_almoco, 'HH24:MI') AS "retornoAlmoco",
+       to_char(u.saida_expediente, 'HH24:MI') AS "saidaExpediente",
        u.provedor_auth AS "provedorAuth",
        u.ativo,
        u.deve_trocar_senha AS "deveTrocarSenha",
@@ -223,6 +249,7 @@ export async function listar(
        u.criado_em AS "criadoEm",
        u.atualizado_em AS "atualizadoEm"
      FROM usuarios u
+     LEFT JOIN cargos c ON c.id = u.cargo_id
      ${CONDICOES_LISTAGEM}
      ORDER BY u.${coluna} ${direcao}
      LIMIT $5 OFFSET $6`,
@@ -305,13 +332,15 @@ export async function criar(
   const { rows } = await executor.query<UsuarioRegistro>(
     `INSERT INTO usuarios (
        id, funcionario_ixc_id, funcionario_nome_snapshot, nome_exibicao,
-       email_login, cargo, escala, status, senha_hash, provedor_auth, ativo,
+       email_login, cargo_id, escala, status, senha_hash, provedor_auth, ativo,
        deve_trocar_senha, senha_alterada_em, criado_por_usuario_id,
+       entrada_expediente, saida_almoco, retorno_almoco, saida_expediente,
        criado_em, atualizado_em
      ) VALUES (
        gen_random_uuid(), $1, $2, $3, $4, $5, $6::escala_trabalho,
        $7::status_usuario, $8, $9, $7::status_usuario = 'ATIVO', $10,
-       CASE WHEN $8::varchar IS NULL THEN NULL ELSE now() END, $11, now(), now()
+       CASE WHEN $8::varchar IS NULL THEN NULL ELSE now() END, $11,
+       $12::time, $13::time, $14::time, $15::time, now(), now()
      )
      RETURNING ${COLUNAS}`,
     [
@@ -319,13 +348,17 @@ export async function criar(
       dados.funcionarioNomeSnapshot,
       dados.nomeExibicao,
       dados.emailLogin,
-      dados.cargo,
+      dados.cargoId,
       dados.escala,
       dados.status,
       dados.senhaHash,
       dados.provedorAuth,
       dados.deveTrocarSenha,
       dados.criadoPorUsuarioId,
+      dados.entradaExpediente,
+      dados.saidaAlmoco,
+      dados.retornoAlmoco,
+      dados.saidaExpediente,
     ],
   );
 
@@ -347,10 +380,14 @@ export async function atualizar(
     `UPDATE usuarios
         SET nome_exibicao = $2,
             email_login = $3,
-            cargo = $4,
+            cargo_id = $4,
             escala = $5::escala_trabalho,
             funcionario_ixc_id = $6,
             funcionario_nome_snapshot = $7,
+            entrada_expediente = $9::time,
+            saida_almoco = $10::time,
+            retorno_almoco = $11::time,
+            saida_expediente = $12::time,
             atualizado_em = now()
       WHERE id = $1
         AND atualizado_em = $8
@@ -359,11 +396,15 @@ export async function atualizar(
       id,
       dados.nomeExibicao,
       dados.emailLogin,
-      dados.cargo,
+      dados.cargoId,
       dados.escala,
       dados.funcionarioIxcId,
       dados.funcionarioNomeSnapshot,
       atualizadoEmAnterior,
+      dados.entradaExpediente,
+      dados.saidaAlmoco,
+      dados.retornoAlmoco,
+      dados.saidaExpediente,
     ],
   );
   return rows[0] ?? null;
@@ -431,5 +472,18 @@ export async function substituirGrupos(
     `INSERT INTO usuario_grupos (usuario_id, grupo_id, criado_em)
      SELECT $1, grupo_id, now() FROM UNNEST($2::uuid[]) AS grupo_id`,
     [usuarioId, grupoIds],
+  );
+}
+
+export async function listarColaboradores(): Promise<UsuarioRegistro[]> {
+  return consultar<UsuarioRegistro>(
+    `SELECT ${COLUNAS} FROM usuarios
+      WHERE NOT EXISTS (
+        SELECT 1 FROM usuario_grupos ug
+          JOIN grupos_permissao g ON g.id = ug.grupo_id
+         WHERE ug.usuario_id = usuarios.id
+           AND lower(g.nome) = lower($1::text))
+      ORDER BY nome_exibicao`,
+    [GRUPO_ADMIN_MASTER],
   );
 }

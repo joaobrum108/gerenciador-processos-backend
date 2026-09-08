@@ -19,7 +19,7 @@ const esquemaListagem = esquemaPaginacao(
 
 const esquemaId = z.object({ id: z.uuid("Identificador invalido") });
 
-const esquemaCargo = z.string().trim().min(1, "Informe o cargo").max(100);
+const esquemaCargo = z.uuid("Cargo invalido").nullable();
 const esquemaEscala = z.enum(ESCALAS_TRABALHO, {
   error: "Escala invalida. Use 5x2, 6x1 ou 12x36",
 });
@@ -27,12 +27,23 @@ const esquemaStatusUsuario = z.enum(STATUS_USUARIO, {
   error: "Status invalido. Use ATIVO, INATIVO ou CONVITE_PENDENTE",
 });
 
+const esquemaHora = z
+  .string()
+  .trim()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use o formato HH:MM")
+  .nullable()
+  .optional();
+
 const esquemaCriacao = z.object({
   nomeExibicao: z.string({ error: "Informe o nome de exibicao" }).trim().min(1, "Informe o nome de exibicao").max(150),
   emailLogin: z.string({ error: "Informe o e-mail" }).trim().min(1, "Informe o e-mail").max(254),
-  cargo: esquemaCargo.optional(),
+  cargoId: esquemaCargo.optional(),
   escala: esquemaEscala.optional(),
   status: esquemaStatusUsuario.optional(),
+  entradaExpediente: esquemaHora,
+  saidaAlmoco: esquemaHora,
+  retornoAlmoco: esquemaHora,
+  saidaExpediente: esquemaHora,
   provedorAuth: z.enum(["LOCAL", "AD", "SSO"]).default("LOCAL"),
   funcionarioIxcId: z.string().trim().max(100).optional(),
   funcionarioNomeSnapshot: z.string().trim().max(150).optional(),
@@ -42,8 +53,12 @@ const esquemaCriacao = z.object({
 const esquemaAtualizacao = z.object({
   nomeExibicao: z.string({ error: "Informe o nome de exibicao" }).trim().min(1, "Informe o nome de exibicao").max(150),
   emailLogin: z.string({ error: "Informe o e-mail" }).trim().min(1, "Informe o e-mail").max(254),
-  cargo: esquemaCargo.optional(),
+  cargoId: esquemaCargo.optional(),
   escala: esquemaEscala.optional(),
+  entradaExpediente: esquemaHora,
+  saidaAlmoco: esquemaHora,
+  retornoAlmoco: esquemaHora,
+  saidaExpediente: esquemaHora,
   funcionarioIxcId: z.string().trim().max(100).optional(),
   funcionarioNomeSnapshot: z.string().trim().max(150).optional(),
   grupoIds: z.array(z.uuid()).default([]),

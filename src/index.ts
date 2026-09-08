@@ -12,7 +12,11 @@ const env = lerEnv();
 const app = express();
 const port = env.port;
 
-app.use(cors());
+const corsFormat = {
+  origin: process.env.CORS?.split(",").map((origin) => origin.trim()),
+};
+
+app.use(cors(corsFormat));
 app.use(express.json());
 
 app.use("/api/v1", router);
