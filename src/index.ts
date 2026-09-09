@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import type { CorsOptions } from "cors";
 import { lerEnv } from "./config/env.ts";
 import router from "./router.ts";
 import { rotaNaoEncontrada, tratarErro } from "./middlewares/tratar-erro.ts";
@@ -12,11 +13,36 @@ const env = lerEnv();
 const app = express();
 const port = env.port;
 
-const corsFormat = {
-  origin: process.env.CORS?.split(",").map((origin) => origin.trim()),
+function normalizarOrigem(valor: string): string {
+  return valor.trim().replace(/\/+$/, "").toLowerCase();
+}
+
+const origensPermitidas = (process.env.CORS ?? "")
+  .split(",")
+  .map(normalizarOrigem)
+  .filter((origem) => origem !== "");
+
+const liberarTodas = origensPermitidas.includes("*");
+
+const corsFormat: CorsOptions = {
+  origin(origem, callback) {
+    if (origem === undefined || liberarTodas) {
+      callback(null, true);
+      return;
+    }
+
+    if (origensPermitidas.includes(normalizarOrigem(origem))) {
+      callback(null, true);
+      return;
+    }
+
+    callback(new Error(`Origem nao permitida pelo CORS: ${origem}`));
+  },
+  credentials: true,
 };
 
 app.use(cors(corsFormat));
+app.options(/.*/, cors(corsFormat));
 app.use(express.json());
 
 app.use("/api/v1", router);
