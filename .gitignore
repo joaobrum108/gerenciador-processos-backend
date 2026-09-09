@@ -1,2 +1,5 @@
 .env
 node_modules/
+
+# backups locais de .env, nunca versionar
+.env.bak-*
