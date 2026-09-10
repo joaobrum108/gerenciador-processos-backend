@@ -8,7 +8,7 @@ import {
 } from "../src/services/pontuacao-os.service.ts";
 
 function montarService(opcoes: {
-  servicos?: { assuntoOsIxcId: string; assuntoOs: string; ocorrencias: string }[];
+  servicos?: { assuntoOsIxcId: string; assuntoOs: string }[];
   regras?: {
     id: string;
     assuntoOsIxcId: string;
@@ -24,7 +24,7 @@ function montarService(opcoes: {
 
   const service = criarPontuacaoOsService({
     repositorio: {
-      listarServicosDoEspelho: async () => opcoes.servicos ?? [],
+      listarServicosDoIxc: async () => opcoes.servicos ?? [],
       listarRegras: async () => opcoes.regras ?? [],
       gravarRegra: async (dados: {
         assuntoOsIxcId: string;
@@ -54,7 +54,6 @@ function montarService(opcoes: {
 const SERVICO = {
   assuntoOsIxcId: "398",
   assuntoOs: "AUDITORIA REPARO RESIDENCIAL #",
-  ocorrencias: "55339",
 };
 
 const REGRA = {
@@ -105,7 +104,6 @@ describe("pontuacaoOs.listar", () => {
 
     assert.equal(item?.pontos, PONTOS_PADRAO);
     assert.equal(item?.configurado, false);
-    assert.equal(item?.ocorrencias, 55339);
   });
 
   it("servico com regra usa a pontuacao configurada", async () => {
@@ -117,7 +115,7 @@ describe("pontuacaoOs.listar", () => {
     assert.equal(item?.configurado, true);
   });
 
-  it("regra de servico que nao aparece mais no espelho continua na lista", async () => {
+  it("regra de servico fora do filtro do IXC nao entra na lista", async () => {
     const { service } = montarService({
       servicos: [],
       regras: [{ ...REGRA, assuntoOsIxcId: "999", assuntoOs: "SERVICO ANTIGO" }],
@@ -125,9 +123,7 @@ describe("pontuacaoOs.listar", () => {
 
     const itens = await service.listar();
 
-    assert.equal(itens.length, 1);
-    assert.equal(itens[0]?.assuntoOs, "SERVICO ANTIGO");
-    assert.equal(itens[0]?.ocorrencias, 0);
+    assert.equal(itens.length, 0);
   });
 
   it("nao duplica o servico que tem regra e aparece no espelho", async () => {

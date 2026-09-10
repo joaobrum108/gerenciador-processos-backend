@@ -1,6 +1,7 @@
-import * as repositorioAuditoriasPadrao from "../repositories/repositorio.auditorias.local.ts";
+import * as repositorioAuditoriasPadrao from "../repositories/repositorio.auditorias.ixc.ts";
 import * as repositorioPontuacaoPadrao from "../repositories/pontuacao-os.repository.ts";
 import * as repositorioRankingPadrao from "../repositories/ranking.repository.ts";
+import { buscarNomesOperadores } from "../repositories/operadores.ixc.ts";
 import { classificarOcorrencia } from "./classificacao.auditoria.ts";
 import { ErroValidacao } from "../erros.ts";
 
@@ -50,6 +51,7 @@ interface DependenciasRanking {
   repositorioAuditorias: typeof repositorioAuditoriasPadrao;
   repositorioPontuacao: typeof repositorioPontuacaoPadrao;
   repositorioRanking: typeof repositorioRankingPadrao;
+  buscarNomes: typeof buscarNomesOperadores;
 }
 
 const SEM_AUDITOR = "Nao identificado";
@@ -69,6 +71,7 @@ export function criarRankingService(
     dependencias.repositorioPontuacao ?? repositorioPontuacaoPadrao;
   const repositorioRanking =
     dependencias.repositorioRanking ?? repositorioRankingPadrao;
+  const buscarNomes = dependencias.buscarNomes ?? buscarNomesOperadores;
 
   async function regrasVigentes(): Promise<RegrasRanking> {
     const configuracao = await repositorioRanking.buscarConfiguracaoVigente();
@@ -97,6 +100,14 @@ export function criarRankingService(
       pontuacoes.map((regra) => [regra.assuntoOsIxcId, Number(regra.pontos)]),
     );
 
+    const nomes = await buscarNomes([
+      ...new Set(
+        grupos
+          .map((grupo) => grupo.operadorIxcId)
+          .filter((id): id is number => id !== null),
+      ),
+    ]);
+
     const porAuditor = new Map<number, ItemRanking>();
 
     for (const grupo of grupos) {
@@ -110,7 +121,8 @@ export function criarRankingService(
         porAuditor.get(auditorIxcId) ??
         ({
           auditorIxcId,
-          auditor: grupo.auditorNome ?? SEM_AUDITOR,
+          auditor:
+            nomes.get(auditorIxcId) ?? grupo.auditorNome ?? SEM_AUDITOR,
           cargo: null,
           posicao: 0,
           pontuacaoFinal: 0,

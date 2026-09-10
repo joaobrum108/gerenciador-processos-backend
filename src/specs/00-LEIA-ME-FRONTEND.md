@@ -9,6 +9,8 @@ Esta pasta é a referência de integração entre o frontend e o backend. Antes 
 3. [`03-rotas-backend.md`](./03-rotas-backend.md): planejamento das rotas futuras por tela. Uma rota presente somente nesse arquivo ainda não pode ser consumida.
 4. [`04-monitoramento-equipe-pendencias.md`](./04-monitoramento-equipe-pendencias.md): o que ainda é mock na tela de Monitoramento da Equipe e qual integração destrava cada item.
 5. [`05-handoff-integracao-monitoramento.md`](./05-handoff-integracao-monitoramento.md): estado da integração do Monitoramento, decisões já tomadas, armadilhas do IXC e o que falta decidir. **Leia antes de continuar esse trabalho.**
+6. [`08-regra-negocio-pontuacao-os.md`](./08-regra-negocio-pontuacao-os.md): a regra de negócio da Pontuação de O.S e do Ranking Geral.
+7. [`09-handoff-pontuacao-ranking.md`](./09-handoff-pontuacao-ranking.md): **estado de 10/09/2026 — leia antes de tocar em qualquer coisa de auditoria.** O espelho do IXC foi removido; nada de sincronização.
 
 ## Estado atual resumido
 

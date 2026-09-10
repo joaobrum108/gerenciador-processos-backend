@@ -43,6 +43,7 @@ function montarService(opcoes: {
   const gravadas: unknown[] = [];
 
   const service = criarRankingService({
+    buscarNomes: async () => new Map<number, string>(),
     repositorioAuditorias: {
       resumir: async () => ({ grupos: opcoes.grupos ?? [], intervalos: [] }),
     } as never,

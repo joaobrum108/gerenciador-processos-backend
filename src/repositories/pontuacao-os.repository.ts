@@ -1,4 +1,5 @@
 import { consultar } from "../database/pool.ts";
+import { consultarIxc } from "../database/pool.ixc.ts";
 
 export interface RegraPontuacaoRegistro {
   id: string;
@@ -12,8 +13,13 @@ export interface RegraPontuacaoRegistro {
 export interface ServicoDoIxc {
   assuntoOsIxcId: string;
   assuntoOs: string;
-  ocorrencias: string;
 }
+
+export const PALAVRAS_CHAVE_ASSUNTO = [
+  "AUDITORIA",
+  "DIVERGENCIA DE O.S",
+  "EQUIPAMENTO",
+] as const;
 
 export interface DadosRegra {
   assuntoOsIxcId: string;
@@ -37,17 +43,19 @@ export async function listarRegras(): Promise<RegraPontuacaoRegistro[]> {
   );
 }
 
-export async function listarServicosDoEspelho(): Promise<ServicoDoIxc[]> {
-  return consultar<ServicoDoIxc>(
+export async function listarServicosDoIxc(): Promise<ServicoDoIxc[]> {
+  const filtro = PALAVRAS_CHAVE_ASSUNTO.map(
+    () => "a.assunto LIKE ?",
+  ).join(" OR ");
+
+  return consultarIxc<ServicoDoIxc>(
     `SELECT
-       o.assunto_ixc_id::text AS "assuntoOsIxcId",
-       MAX(o.assunto_snapshot) AS "assuntoOs",
-       COUNT(*)::text AS ocorrencias
-     FROM ocorrencias_ixc o
-     WHERE o.assunto_ixc_id IS NOT NULL
-       AND o.setor_snapshot ILIKE '%AUDITORIA%'
-     GROUP BY o.assunto_ixc_id
-     ORDER BY 2`,
+       CAST(a.id AS CHAR) AS assuntoOsIxcId,
+       a.assunto AS assuntoOs
+     FROM su_oss_assunto a
+     WHERE ${filtro}
+     ORDER BY a.assunto`,
+    PALAVRAS_CHAVE_ASSUNTO.map((palavra) => `%${palavra}%`),
   );
 }
 
