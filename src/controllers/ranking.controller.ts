@@ -15,8 +15,11 @@ const esquemaPeriodo = z
 
 const esquemaConfiguracao = z.object({
   pontosPorErro: z.coerce.number(),
+  erroAcrescenta: z.coerce.boolean().default(false),
   pontosPorMinutoAtraso: z.coerce.number(),
+  atrasoAcrescenta: z.coerce.boolean().default(false),
   pontosPorFalta: z.coerce.number(),
+  faltaAcrescenta: z.coerce.boolean().default(false),
   limiteAltaPerformance: z.coerce.number(),
 });
 

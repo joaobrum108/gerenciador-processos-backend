@@ -30,36 +30,116 @@ function grupo(sobrescritas: Partial<GrupoFalso> = {}): GrupoFalso {
   };
 }
 
+interface ConfiguracaoFalsa {
+  pontosPorErro: string;
+  erroAcrescenta?: boolean;
+  pontosPorMinutoAtraso: string;
+  atrasoAcrescenta?: boolean;
+  pontosPorFalta: string;
+  faltaAcrescenta?: boolean;
+  limiteAltaPerformance: string;
+}
+
+interface PontoFalso {
+  usuarioId: string;
+  funcionarioIxcId: string;
+  atrasoMinutos: number;
+  faltas: number;
+}
+
+function derivarOsPorAssunto(grupos: GrupoFalso[]) {
+  const porChave = new Map<
+    string,
+    { operadorIxcId: number | null; assuntoIxcId: number | null; osDistintas: number }
+  >();
+
+  for (const item of grupos) {
+    const chave = `${item.operadorIxcId}:${item.assuntoIxcId}`;
+    const atual = porChave.get(chave) ?? {
+      operadorIxcId: item.operadorIxcId,
+      assuntoIxcId: item.assuntoIxcId,
+      osDistintas: 0,
+    };
+
+    atual.osDistintas += Number(item.total);
+    porChave.set(chave, atual);
+  }
+
+  return [...porChave.values()];
+}
+
 function montarService(opcoes: {
   grupos?: GrupoFalso[];
+  osPorAssunto?: {
+    operadorIxcId: number | null;
+    assuntoIxcId: number | null;
+    osDistintas: number;
+  }[];
   pontos?: { assuntoOsIxcId: string; pontos: string }[];
-  configuracao?: {
-    pontosPorErro: string;
-    pontosPorMinutoAtraso: string;
-    pontosPorFalta: string;
-    limiteAltaPerformance: string;
-  } | null;
+  ponto?: PontoFalso[];
+  funcionarios?: Map<number, string>;
+  vinculados?: { usuarioId: string; funcionarioIxcId: string }[];
+  configuracao?: ConfiguracaoFalsa | null;
 }) {
   const gravadas: unknown[] = [];
+  const grupos = opcoes.grupos ?? [];
+
+  const operadores = [
+    ...new Set(
+      [
+        ...grupos.map((g) => g.operadorIxcId),
+        ...(opcoes.osPorAssunto ?? []).map((l) => l.operadorIxcId),
+      ].filter((id): id is number => id !== null),
+    ),
+  ];
+
+  const funcionarios =
+    opcoes.funcionarios ??
+    new Map(operadores.map((id) => [id, `f-${id}`]));
+
+  const vinculados =
+    opcoes.vinculados ??
+    [...funcionarios.entries()].map(([id, func]) => ({
+      usuarioId: `u-${id}`,
+      funcionarioIxcId: func,
+    }));
 
   const service = criarRankingService({
     buscarNomes: async () => new Map<number, string>(),
+    buscarFuncionarios: async () => funcionarios,
     repositorioAuditorias: {
-      resumir: async () => ({ grupos: opcoes.grupos ?? [], intervalos: [] }),
+      resumir: async () => ({ grupos, intervalos: [] }),
+      contarOsPorAssunto: async () =>
+        opcoes.osPorAssunto ?? derivarOsPorAssunto(grupos),
     } as never,
     repositorioPontuacao: {
       listarRegras: async () => opcoes.pontos ?? [],
     } as never,
     repositorioRanking: {
-      buscarConfiguracaoVigente: async () => opcoes.configuracao ?? null,
+      buscarConfiguracaoVigente: async () =>
+        opcoes.configuracao == null
+          ? null
+          : {
+              id: "c1",
+              erroAcrescenta: false,
+              atrasoAcrescenta: false,
+              faltaAcrescenta: false,
+              ...opcoes.configuracao,
+              vigenteDe: new Date(),
+            },
+      resumirPontoPorUsuario: async () => opcoes.ponto ?? [],
+      listarUsuariosVinculados: async () => vinculados,
       gravarConfiguracao: async (dados: unknown) => {
         gravadas.push(dados);
-        const d = dados as Record<string, number>;
+        const d = dados as Record<string, number & boolean>;
         return {
           id: "c1",
           pontosPorErro: String(d.pontosPorErro),
+          erroAcrescenta: Boolean(d.erroAcrescenta),
           pontosPorMinutoAtraso: String(d.pontosPorMinutoAtraso),
+          atrasoAcrescenta: Boolean(d.atrasoAcrescenta),
           pontosPorFalta: String(d.pontosPorFalta),
+          faltaAcrescenta: Boolean(d.faltaAcrescenta),
           limiteAltaPerformance: String(d.limiteAltaPerformance),
           vigenteDe: new Date(),
         };
@@ -149,6 +229,7 @@ describe("ranking com erros encontrados", () => {
       ],
       configuracao: {
         pontosPorErro: "10",
+        erroAcrescenta: true,
         pontosPorMinutoAtraso: "0",
         pontosPorFalta: "0",
         limiteAltaPerformance: "0",
@@ -165,12 +246,6 @@ describe("ranking com erros encontrados", () => {
   it("nao conta erro quando a tarefa nega a divergencia", async () => {
     const { service } = montarService({
       grupos: [grupo({ total: "5", tarefa: "SEM DIVERGENCIA | SEM TROCA" })],
-      configuracao: {
-        pontosPorErro: "10",
-        pontosPorMinutoAtraso: "0",
-        pontosPorFalta: "0",
-        limiteAltaPerformance: "0",
-      },
     });
 
     assert.equal(
@@ -186,8 +261,8 @@ describe("ranking: atraso e falta", () => {
       grupos: [grupo()],
       configuracao: {
         pontosPorErro: "0",
-        pontosPorMinutoAtraso: "-2",
-        pontosPorFalta: "-1000",
+        pontosPorMinutoAtraso: "2",
+        pontosPorFalta: "1000",
         limiteAltaPerformance: "0",
       },
     });
@@ -255,13 +330,18 @@ describe("ranking: configuracao", () => {
 
     const regras = await service.definirConfiguracao({
       pontosPorErro: 10,
-      pontosPorMinutoAtraso: -2,
-      pontosPorFalta: -1000,
+      erroAcrescenta: true,
+      pontosPorMinutoAtraso: 2,
+      atrasoAcrescenta: false,
+      pontosPorFalta: 1000,
+      faltaAcrescenta: false,
       limiteAltaPerformance: 4000,
       usuarioId: "u1",
     });
 
     assert.equal(regras.pontosPorErro, 10);
+    assert.equal(regras.erroAcrescenta, true);
+    assert.equal(regras.faltaAcrescenta, false);
     assert.equal(
       (gravadas[0] as { criadoPorUsuarioId: string }).criadoPorUsuarioId,
       "u1",
@@ -274,11 +354,131 @@ describe("ranking: configuracao", () => {
     await assert.rejects(() =>
       service.definirConfiguracao({
         pontosPorErro: 0,
+        erroAcrescenta: false,
         pontosPorMinutoAtraso: 0,
+        atrasoAcrescenta: false,
         pontosPorFalta: 0,
+        faltaAcrescenta: false,
         limiteAltaPerformance: -1,
         usuarioId: "u1",
       }),
     );
+  });
+
+  it("recusa pontos negativos porque o sinal vem do booleano", async () => {
+    const { service } = montarService({});
+
+    await assert.rejects(() =>
+      service.definirConfiguracao({
+        pontosPorErro: 0,
+        erroAcrescenta: false,
+        pontosPorMinutoAtraso: 0,
+        atrasoAcrescenta: false,
+        pontosPorFalta: -1000,
+        faltaAcrescenta: false,
+        limiteAltaPerformance: 0,
+        usuarioId: "u1",
+      }),
+    );
+  });
+});
+
+describe("ranking: sinal e ponto", () => {
+  it("desconta atraso e falta quando o booleano diz descontar", async () => {
+    const { service } = montarService({
+      grupos: [grupo({ operadorIxcId: 924, total: "5" })],
+      pontos: [{ assuntoOsIxcId: "398", pontos: "1000" }],
+      funcionarios: new Map([[924, "94424"]]),
+      vinculados: [{ usuarioId: "u-davi", funcionarioIxcId: "94424" }],
+      ponto: [
+        {
+          usuarioId: "u-davi",
+          funcionarioIxcId: "94424",
+          atrasoMinutos: 10,
+          faltas: 0,
+        },
+      ],
+      configuracao: {
+        pontosPorErro: "0",
+        pontosPorMinutoAtraso: "120",
+        atrasoAcrescenta: false,
+        pontosPorFalta: "1000",
+        limiteAltaPerformance: "0",
+      },
+    });
+
+    const [item] = (await service.gerar(PERIODO)).itens;
+
+    assert.equal(item?.composicao.pontosOs, 5000);
+    assert.equal(item?.composicao.atrasoMinutos, 10);
+    assert.equal(item?.composicao.pontosAtrasos, 1200);
+    assert.equal(item?.pontuacaoFinal, 3800);
+    assert.equal(item?.usuarioId, "u-davi");
+  });
+
+  it("acrescenta quando o booleano diz acrescentar", async () => {
+    const { service } = montarService({
+      grupos: [grupo({ operadorIxcId: 924, total: "1" })],
+      funcionarios: new Map([[924, "94424"]]),
+      vinculados: [{ usuarioId: "u-davi", funcionarioIxcId: "94424" }],
+      ponto: [
+        {
+          usuarioId: "u-davi",
+          funcionarioIxcId: "94424",
+          atrasoMinutos: 0,
+          faltas: 2,
+        },
+      ],
+      configuracao: {
+        pontosPorErro: "0",
+        pontosPorMinutoAtraso: "0",
+        pontosPorFalta: "50",
+        faltaAcrescenta: true,
+        limiteAltaPerformance: "0",
+      },
+    });
+
+    const [item] = (await service.gerar(PERIODO)).itens;
+
+    assert.equal(item?.composicao.pontosFaltas, 100);
+    assert.equal(item?.pontuacaoFinal, 100);
+  });
+
+  it("lista auditor sem colaborador vinculado, com usuarioId nulo", async () => {
+    const { service } = montarService({
+      grupos: [
+        grupo({ operadorIxcId: 999, total: "3" }),
+        grupo({ operadorIxcId: 924, total: "5" }),
+      ],
+      funcionarios: new Map([[924, "94424"]]),
+      vinculados: [{ usuarioId: "u-davi", funcionarioIxcId: "94424" }],
+    });
+
+    const itens = (await service.gerar(PERIODO)).itens;
+
+    assert.equal(itens.length, 2);
+    assert.equal(
+      itens.find((i) => i.auditorIxcId === 924)?.usuarioId,
+      "u-davi",
+    );
+    assert.equal(itens.find((i) => i.auditorIxcId === 999)?.usuarioId, null);
+  });
+
+  it("conta O.S por chamado distinto, nao por mensagem", async () => {
+    const { service } = montarService({
+      grupos: [
+        grupo({ total: "4", diagnostico: "AUDITORIA CONCLUIDA" }),
+        grupo({ total: "3", diagnostico: "OUTRO DIAGNOSTICO" }),
+      ],
+      osPorAssunto: [
+        { operadorIxcId: 430, assuntoIxcId: 398, osDistintas: 5 },
+      ],
+      pontos: [{ assuntoOsIxcId: "398", pontos: "10" }],
+    });
+
+    const [item] = (await service.gerar(PERIODO)).itens;
+
+    assert.equal(item?.composicao.osAuditadas, 5);
+    assert.equal(item?.composicao.pontosOs, 50);
   });
 });

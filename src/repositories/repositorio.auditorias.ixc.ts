@@ -1,5 +1,11 @@
 import { consultarIxc } from "../database/pool.ixc.ts";
 import { margemUltimaAtualizacao } from "./margem.ixc.ts";
+import { PALAVRAS_CHAVE_ASSUNTO } from "./pontuacao-os.repository.ts";
+
+const FILTRO_DEPARTAMENTO = PALAVRAS_CHAVE_ASSUNTO.map(
+  (palavra) =>
+    `COALESCE(su_oss_chamado_su_oss_assunto.assunto, '') LIKE '%${palavra}%'`,
+).join("\n            OR ");
 
 export interface AuditoriaIxc {
   ocorrenciaIxcId: number;
@@ -45,6 +51,12 @@ export interface ResumoAuditoriasIxc {
   intervalos: IntervaloAuditorIxc[];
 }
 
+export interface OsPorAssuntoIxc {
+  operadorIxcId: number | null;
+  assuntoIxcId: number | null;
+  osDistintas: number;
+}
+
 const COLUNAS = `  su_oss_chamado_mensagem.id AS ocorrenciaIxcId,
   su_oss_chamado_mensagem.id_chamado AS chamadoIxcId,
   su_oss_chamado_mensagem_su_oss_chamado.id_cliente AS clienteIxcId,
@@ -66,11 +78,10 @@ LEFT JOIN su_oss_assunto su_oss_chamado_su_oss_assunto ON su_oss_chamado_mensage
 LEFT JOIN funcionarios su_oss_chamado_mensagem_funcionarios ON su_oss_chamado_mensagem.id_tecnico = su_oss_chamado_mensagem_funcionarios.id
 LEFT JOIN cliente su_oss_chamado_cliente ON su_oss_chamado_mensagem_su_oss_chamado.id_cliente = su_oss_chamado_cliente.id
 LEFT JOIN su_diagnostico su_oss_chamado_mensagem_su_diagnostico ON su_oss_chamado_mensagem.id_su_diagnostico = su_oss_chamado_mensagem_su_diagnostico.id
-LEFT JOIN empresa_setor su_oss_chamado_empresa_setor ON su_oss_chamado_mensagem_su_oss_chamado.setor = su_oss_chamado_empresa_setor.id
 LEFT JOIN wfl_tarefa su_oss_chamado_mensagem_wfl_tarefa ON su_oss_chamado_mensagem.id_proxima_tarefa = su_oss_chamado_mensagem_wfl_tarefa.id
 WHERE (su_oss_chamado_mensagem_su_oss_chamado.ultima_atualizacao >= DATE_SUB(?, INTERVAL ? DAY)
        AND su_oss_chamado_mensagem_su_oss_chamado.data_fechamento BETWEEN ? AND ?
-       AND (su_oss_chamado_empresa_setor.setor LIKE '%AUDITORIA%')
+       AND (${FILTRO_DEPARTAMENTO})
        AND (su_oss_chamado_mensagem.id_operador IS NOT NULL)
        AND (COALESCE(su_oss_chamado_su_oss_assunto.assunto, '') NOT LIKE '%DIVERGENCIA DE O.S%')
        AND (COALESCE(su_oss_chamado_cliente.razao, '') NOT LIKE '%CLIENTE REDFOX TESTE1%'
@@ -99,6 +110,22 @@ export async function listar(
     `SELECT
 ${COLUNAS}
 ${FONTE}`,
+    parametros(periodo),
+  );
+}
+
+export async function contarOsPorAssunto(
+  periodo: PeriodoAuditorias,
+): Promise<OsPorAssuntoIxc[]> {
+  return consultarIxc<OsPorAssuntoIxc>(
+    `SELECT
+  su_oss_chamado_mensagem.id_operador AS operadorIxcId,
+  su_oss_chamado_mensagem_su_oss_chamado.id_assunto AS assuntoIxcId,
+  COUNT(DISTINCT su_oss_chamado_mensagem.id_chamado) AS osDistintas
+${FONTE}
+GROUP BY
+  su_oss_chamado_mensagem.id_operador,
+  su_oss_chamado_mensagem_su_oss_chamado.id_assunto`,
     parametros(periodo),
   );
 }

@@ -12,7 +12,6 @@ import {
   paradeirosRoutes,
 } from "./routes/parametrizacoes-devolucao.routes.ts";
 import rankingRoutes from "./routes/ranking.routes.ts";
-import regrasRankingRoutes from "./routes/regras-ranking.routes.ts";
 import cargosRoutes from "./routes/cargos.routes.ts";
 import colaboradoresRoutes from "./routes/colaboradores.routes.ts";
 import registrosPontoRoutes from "./routes/registros-ponto.routes.ts";
@@ -34,7 +33,6 @@ router.use("/agendamentos", agendamentosRoutes);
 router.use("/motivos-devolucao", motivosDevolucaoRoutes);
 router.use("/paradeiros", paradeirosRoutes);
 router.use("/ranking", rankingRoutes);
-router.use("/regras-ranking", regrasRankingRoutes);
 router.use("/cargos", cargosRoutes);
 router.use("/colaboradores", colaboradoresRoutes);
 router.use("/registros-ponto", registrosPontoRoutes);
